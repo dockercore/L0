@@ -18,34 +18,19 @@
 
 package consensus
 
-// ITransaction Interface for consensus content, consensus input object
-type ITransaction interface {
-	Serialize() []byte
-	Deserialize(payload []byte) error
-	FromChain() string
-	ToChain() string
-	CreateTime() uint32
-	Nonce() uint32
-}
+import "github.com/bocheninc/L0/core/types"
 
-// ITxPool Interface for tx containter
-type ITxPool interface {
-	IterTransaction(func(ITransaction) bool)
-	Removes([]ITransaction)
-	Len() int
+//BroadcastConsensus Define consensus data for broadcast
+type BroadcastConsensus struct {
+	To      string
+	Payload []byte
 }
 
 // CommittedTxs Consensus output object
 type CommittedTxs struct {
 	SeqNos       []uint64
 	Time         uint32
-	Transactions []ITransaction
-}
-
-// IBroadcast Interface for consensus broadcast content
-type IBroadcast interface {
-	To() string
-	Payload() []byte
+	Transactions []*types.Transaction
 }
 
 // Consenter Interface for plugin consenser
@@ -53,15 +38,21 @@ type Consenter interface {
 	Start()
 	Stop()
 	RecvConsensus([]byte)
-	BroadcastConsensusChannel() <-chan IBroadcast
-	BroadcastTransactionChannel() <-chan ITransaction
+	BroadcastConsensusChannel() <-chan *BroadcastConsensus
 	CommittedTxsChannel() <-chan *CommittedTxs
+}
+
+// ITxPool Interface for tx containter, input
+type ITxPool interface {
+	IterTransaction(func(*types.Transaction) bool)
+	GetGroupingTxs(maxSize, maxGroup uint64) [][]*types.Transaction
+	Removes([]*types.Transaction)
+	Len() int
 }
 
 // IStack Interface for other function for plugin consenser
 type IStack interface {
-	NewTransaction() ITransaction
-	VerifyTxsInConsensus(txs []ITransaction, primary bool) []ITransaction
+	VerifyTxsInConsensus(txs []*types.Transaction, primary bool) []*types.Transaction
 	GetLastSeqNo() uint64
 	ITxPool
 }

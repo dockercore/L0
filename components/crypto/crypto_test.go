@@ -21,7 +21,10 @@ package crypto
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"testing"
+
+	"github.com/bocheninc/L0/components/utils"
 )
 
 const (
@@ -84,6 +87,7 @@ func TestHash(t *testing.T) {
 	if hash2.String() != testSha256HashStr {
 		t.Errorf("Sha256(%s) = %s, except %s !", "hello", testSha256HashStr, hash.String())
 	}
+	fmt.Println(DoubleSha256(utils.HexToBytes("925a82a0970b3fe1e5831d307a54458ba1b935768ee789c11a55c55b97f360b1")))
 }
 
 func TestLoadAndSaveECDSA(t *testing.T) {

@@ -76,14 +76,15 @@ func (ledger *Ledger) VerifyChain() {
 	if err != nil {
 		panic(err)
 	}
-	currentBlockHeader, err := ledger.block.GetBlockByNumber(height)
-	for i := height; i >= 1; i-- {
-		previousBlockHeader, err := ledger.block.GetBlockByNumber(i - 1) // storage
-		if previousBlockHeader != nil && err != nil {
 
+	currentBlockHeader, err := ledger.block.GetBlockHeaderByNumber(height)
+	for i := height; i >= 1; i-- {
+		previousBlockHeader, err := ledger.block.GetBlockHeaderByNumber(i - 1) // storage
+		if previousBlockHeader != nil && err != nil {
 			log.Debug("get block err")
 			panic(err)
 		}
+
 		// verify previous block
 		if !previousBlockHeader.Hash().Equal(currentBlockHeader.PreviousHash) {
 			panic(fmt.Errorf("block [%d], veifychain breaks", i))
@@ -93,19 +94,21 @@ func (ledger *Ledger) VerifyChain() {
 }
 
 // GetGenesisBlock returns the genesis block of the ledger
-func (ledger *Ledger) GetGenesisBlock() *types.BlockHeader {
+func (ledger *Ledger) GetGenesisBlock() *types.Block {
 
-	genesisBlockHeader, err := ledger.GetBlockByNumber(0)
+	genesisBlock, err := ledger.GetBlockByNumber(0)
 	if err != nil {
 		panic(err)
 	}
-	return genesisBlockHeader
+	return genesisBlock
 }
 
 // AppendBlock appends a new block to the ledger,flag = true pack up block ,flag = false sync block
 func (ledger *Ledger) AppendBlock(block *types.Block, flag bool) error {
-	var err error
-	var txWriteBatchs []*db.WriteBatch
+	var (
+		err           error
+		txWriteBatchs []*db.WriteBatch
+	)
 
 	txWriteBatchs, block.Transactions, err = ledger.executeTransaction(block.Transactions)
 	if err != nil {
@@ -138,22 +141,20 @@ func (ledger *Ledger) AppendBlock(block *types.Block, flag bool) error {
 }
 
 // GetBlockByNumber gets the block by the given number
-func (ledger *Ledger) GetBlockByNumber(number uint32) (*types.BlockHeader, error) {
+func (ledger *Ledger) GetBlockByNumber(number uint32) (*types.Block, error) {
+
 	return ledger.block.GetBlockByNumber(number)
 }
 
 // GetBlockByHash returns the block detail by hash
-func (ledger *Ledger) GetBlockByHash(blockHashBytes []byte) (*types.BlockHeader, error) {
-	return ledger.block.GetBlockByHash(blockHashBytes)
-}
+func (ledger *Ledger) GetBlockByHash(blockHashBytes []byte) (*types.Block, error) {
 
-//GetTransactionHashList returns transactions hash list by block number
-func (ledger *Ledger) GetTransactionHashList(number uint32) ([]crypto.Hash, error) {
-	return ledger.block.GetTransactionHashList(number)
+	return ledger.block.GetBlockByHash(blockHashBytes)
 }
 
 // Height returns height of ledger, return -1 if not exist
 func (ledger *Ledger) Height() (uint32, error) {
+
 	return ledger.block.GetBlockchainHeight()
 }
 
@@ -167,26 +168,31 @@ func (ledger *Ledger) GetLastBlockHash() (crypto.Hash, error) {
 	if err != nil {
 		return crypto.Hash{}, err
 	}
+
 	return lastBlock.Hash(), nil
 }
 
 // GetTxsByBlockHash returns transactions  by block hash and transactionType
 func (ledger *Ledger) GetTxsByBlockHash(blockHashBytes []byte, transactionType uint32) (types.Transactions, error) {
+
 	return ledger.block.GetTransactionsByHash(blockHashBytes, transactionType)
 }
 
 //GetTxsByBlockNumber returns transactions by blcokNumber and transactionType
 func (ledger *Ledger) GetTxsByBlockNumber(blockNumber uint32, transactionType uint32) (types.Transactions, error) {
+
 	return ledger.block.GetTransactionsByNumber(blockNumber, transactionType)
 }
 
 //GetTxByTxHash returns transaction by tx hash []byte
 func (ledger *Ledger) GetTxByTxHash(txHashBytes []byte) (*types.Transaction, error) {
+
 	return ledger.block.GetTransactionByTxHash(txHashBytes)
 }
 
 // GetBalance returns balance by account
 func (ledger *Ledger) GetBalance(addr accounts.Address) (*big.Int, uint32, error) {
+
 	return ledger.state.GetBalance(addr)
 }
 
@@ -240,7 +246,6 @@ func (ledger *Ledger) init() error {
 func (ledger *Ledger) commitedTranaction(tx *types.Transaction, writeBatchs []*db.WriteBatch) ([]*db.WriteBatch, error) {
 
 	var err error
-
 	switch tx.GetType() {
 	case types.TypeIssue:
 		if writeBatchs, err = ledger.executeIssueTx(writeBatchs, tx); err != nil {
@@ -272,10 +277,12 @@ func (ledger *Ledger) commitedTranaction(tx *types.Transaction, writeBatchs []*d
 }
 
 func (ledger *Ledger) executeTransaction(Txs types.Transactions) ([]*db.WriteBatch, types.Transactions, error) {
-	var err error
-	var writeBatchs []*db.WriteBatch
-	var ctxs types.Transactions
-	var txs types.Transactions
+	var (
+		err         error
+		writeBatchs []*db.WriteBatch
+		ctxs        types.Transactions
+		txs         types.Transactions
+	)
 
 	bh, _ := ledger.Height()
 	ledger.contract.StartConstract(bh)
@@ -420,7 +427,7 @@ func (ledger *Ledger) executeSmartContractTx(writeBatchs []*db.WriteBatch, tx *t
 	_, err := vm.RealExecute(ctx)
 	if err != nil {
 		log.Errorf("contract execute failed ......")
-		return nil, nil, errors.New("contract execute failed ")
+		return nil, nil, errors.New("contract execute failed")
 	}
 
 	smartContractTxs, err := ledger.contract.FinishContractTransaction()
@@ -448,7 +455,7 @@ func (ledger *Ledger) checkCoordinate(tx *types.Transaction) bool {
 	return false
 }
 
-//GetTmpBalance get tmp balance in a block
+//GetTmpBalance get balance
 func (ledger *Ledger) GetTmpBalance(addr accounts.Address) (*big.Int, error) {
 	balance, err := ledger.state.GetTmpBalance(addr)
 	if err != nil {

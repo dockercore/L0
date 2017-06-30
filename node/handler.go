@@ -213,21 +213,18 @@ func (pm *ProtocolManager) consensusReadLoop() {
 	for {
 		select {
 		case consensusData := <-pm.consenter.BroadcastConsensusChannel():
-			to := consensusData.To()
+			to := consensusData.To
 			if bytes.Equal(coordinate.HexToChainCoordinate(to), params.ChainID) {
 				log.Debugf("Broadcast Consensus Message from %v to %v", params.ChainID, coordinate.HexToChainCoordinate(to))
-				pm.msgCh <- p2p.NewMsg(consensusMsg, consensusData.Payload())
+				pm.msgCh <- p2p.NewMsg(consensusMsg, consensusData.Payload)
 			} else {
 				// broadcast message to msg-net
 				data := msgnet.Message{}
 				data.Cmd = msgnet.ChainConsensusMsg
-				data.Payload = consensusData.Payload()
+				data.Payload = consensusData.Payload
 				res := pm.SendMsgnetMessage(pm.peerAddress(), to, data)
 				log.Debugf("Broadcast consensus message to msg-net, result: %t", res)
 			}
-		case tx := <-pm.consenter.BroadcastTransactionChannel():
-			msg := p2p.NewMsg(txMsg, tx.Serialize())
-			pm.msgCh <- msg
 		}
 	}
 }

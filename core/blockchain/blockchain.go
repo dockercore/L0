@@ -45,11 +45,11 @@ var validTxPoolSize = 100000
 type Blockchain struct {
 	// global chain config
 	// config
-	mu                 sync.Mutex
-	wg                 sync.WaitGroup
-	currentBlockHeader *types.BlockHeader
-	ledger             *ledger.Ledger
-	txValidator        *Validator
+	mu           sync.Mutex
+	wg           sync.WaitGroup
+	currentBlock *types.Block
+	ledger       *ledger.Ledger
+	txValidator  *Validator
 	// consensus
 	consenter consensus.Consenter
 	// network stack
@@ -65,10 +65,7 @@ type Blockchain struct {
 
 // load loads local blockchain data
 func (bc *Blockchain) load() {
-
-	t := time.Now()
 	bc.ledger.VerifyChain()
-	delay := time.Since(t)
 
 	height, err := bc.ledger.Height()
 
@@ -76,26 +73,26 @@ func (bc *Blockchain) load() {
 		log.Error("GetBlockHeight error", err)
 		return
 	}
-	bc.currentBlockHeader, err = bc.ledger.GetBlockByNumber(height)
+	bc.currentBlock, err = bc.ledger.GetBlockByNumber(height)
 
-	if bc.currentBlockHeader == nil || err != nil {
+	if bc.currentBlock == nil || err != nil {
 		log.Errorf("GetBlockByNumber error %v ", err)
 		panic(err)
 	}
 
-	log.Debugf("Load blockchain data, bestblockhash: %s height: %d load delay : %v ", bc.currentBlockHeader.Hash(), height, delay)
+	log.Debugf("Load blockchain data, bestblockhash: %s height: %d", bc.currentBlock.Hash(), height)
 }
 
 // NewBlockchain returns a fully initialised blockchain service using input data
 func NewBlockchain(ledger *ledger.Ledger) *Blockchain {
 	bc := &Blockchain{
-		mu:                 sync.Mutex{},
-		wg:                 sync.WaitGroup{},
-		ledger:             ledger,
-		quitCh:             make(chan bool),
-		txCh:               make(chan *types.Transaction, 10000),
-		blkCh:              make(chan *types.Block, 10),
-		currentBlockHeader: new(types.BlockHeader),
+		mu:           sync.Mutex{},
+		wg:           sync.WaitGroup{},
+		ledger:       ledger,
+		quitCh:       make(chan bool),
+		txCh:         make(chan *types.Transaction, 10000),
+		blkCh:        make(chan *types.Block, 10),
+		currentBlock: new(types.Block),
 	}
 	bc.txValidator = NewValidator(bc.ledger)
 	if params.Validator {
@@ -118,25 +115,25 @@ func (bc *Blockchain) SetNetworkStack(pm NetworkStack) {
 
 // CurrentHeight returns current heigt of the current block
 func (bc *Blockchain) CurrentHeight() uint32 {
-	return bc.currentBlockHeader.Height
+	return bc.currentBlock.Height()
 }
 
 // CurrentBlockHash returns current block hash of the current block
 func (bc *Blockchain) CurrentBlockHash() crypto.Hash {
-	return bc.currentBlockHeader.Hash()
+	return bc.currentBlock.Header.Hash()
 }
 
 // GetNextBlockHash returns the next block hash
 func (bc *Blockchain) GetNextBlockHash(h crypto.Hash) (crypto.Hash, error) {
-	blockHeader, err := bc.ledger.GetBlockByHash(h.Bytes())
-	if blockHeader == nil || err != nil {
+	block, err := bc.ledger.GetBlockByHash(h.Bytes())
+	if block == nil || err != nil {
 		return h, err
 	}
-	nextBlockHeader, err := bc.ledger.GetBlockByNumber(blockHeader.Height + 1)
-	if nextBlockHeader == nil || err != nil {
+	nextBlock, err := bc.ledger.GetBlockByNumber(block.Height() + 1)
+	if nextBlock == nil || err != nil {
 		return h, err
 	}
-	hash := nextBlockHeader.Hash()
+	hash := nextBlock.Hash()
 	return hash, nil
 }
 
@@ -145,7 +142,7 @@ func (bc *Blockchain) GetBalanceNonce(addr accounts.Address) (*big.Int, uint32) 
 	return bc.txValidator.getBalanceNonce(addr)
 }
 
-// GetTransaction returns transaction in ledage first then txBool
+// GetTransaction returns transaction in ledger first then txBool
 func (bc *Blockchain) GetTransaction(txHash crypto.Hash) (*types.Transaction, error) {
 	tx, err := bc.ledger.GetTxByTxHash(txHash.Bytes())
 	if tx == nil {
@@ -160,9 +157,12 @@ func (bc *Blockchain) GetTransaction(txHash crypto.Hash) (*types.Transaction, er
 // Start starts blockchain services
 func (bc *Blockchain) Start() {
 	// bc.wg.Add(1)
+	t := time.Now()
 	bc.load()
+	delay := time.Since(t)
+
 	bc.StartConsensusService()
-	log.Debug("BlockChain Service start")
+	log.Debug("BlockChain Service start", delay)
 	// bc.wg.Wait()
 
 }
@@ -180,7 +180,7 @@ func (bc *Blockchain) StartConsensusService() {
 
 				log.Debugf("Get CommitedTxs Number: %d", len(commitedTxs.Transactions))
 				for _, tx := range commitedTxs.Transactions {
-					txs = append(txs, tx.(*types.Transaction))
+					txs = append(txs, tx)
 				}
 				if txs != nil && len(txs) > 0 {
 					blk := bc.GenerateBlock(txs, uint32(commitedTxs.Time))
@@ -207,11 +207,10 @@ func (bc *Blockchain) ProcessTransaction(tx *types.Transaction) bool {
 
 // ProcessBlock processes new block from the network
 func (bc *Blockchain) ProcessBlock(blk *types.Block) bool {
-	log.Debugf("block previoushash %s, currentblockhash %s", blk.PreviousHash(), bc.CurrentBlockHash())
 	if blk.PreviousHash() == bc.CurrentBlockHash() {
 		bc.ledger.AppendBlock(blk, true)
 		log.Infof("New Block  %s, height: %d Transaction Number: %d", blk.Hash(), blk.Height(), len(blk.Transactions))
-		bc.currentBlockHeader = blk.Header
+		bc.currentBlock = blk
 		return true
 	}
 	return false
@@ -235,12 +234,9 @@ func (bc *Blockchain) GenerateBlock(txs types.Transactions, createTime uint32) *
 		merkleRootHash crypto.Hash
 	)
 
-	// log.Debug("Generateblock ", atomicTxs, acrossChainTxs)
-	//merkleRootHash = bc.merkleRootHash(txs)
-
-	blk := types.NewBlock(bc.currentBlockHeader.Hash(),
-		createTime, bc.currentBlockHeader.Height+1,
-		uint32(100),
+	blk := types.NewBlock(bc.currentBlock.Header.Hash(),
+		createTime, bc.currentBlock.Height()+1,
+		uint32(0),
 		merkleRootHash,
 		txs,
 	)

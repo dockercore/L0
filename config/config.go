@@ -83,7 +83,8 @@ type Config struct {
 	NetDbConfig *db.Config
 
 	// profile
-	CPUFile string
+	CPUFile  string
+	ProfPort string
 }
 
 // New returns a config according the config file
@@ -148,9 +149,14 @@ func loadConfig(cfgFile string) (conf *Config, err error) {
 
 func (cfg *Config) read() string {
 	var (
-		dataDir string
-		cpuFile string
+		dataDir  string
+		cpuFile  string
+		profPort string
 	)
+
+	if profPort = viper.GetString("blockchain.profPort"); profPort != "" {
+		cfg.ProfPort = profPort
+	}
 
 	if cpuFile = viper.GetString("blockchain.cpuprofile"); cpuFile != "" {
 		cfg.CPUFile = cpuFile
