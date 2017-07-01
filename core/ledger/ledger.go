@@ -77,9 +77,9 @@ func (ledger *Ledger) VerifyChain() {
 		panic(err)
 	}
 
-	currentBlockHeader, err := ledger.block.GetBlockHeaderByNumber(height)
+	currentBlockHeader, err := ledger.block.GetBlockByNumber(height)
 	for i := height; i >= 1; i-- {
-		previousBlockHeader, err := ledger.block.GetBlockHeaderByNumber(i - 1) // storage
+		previousBlockHeader, err := ledger.block.GetBlockByNumber(i - 1) // storage
 		if previousBlockHeader != nil && err != nil {
 			log.Debug("get block err")
 			panic(err)
@@ -94,13 +94,13 @@ func (ledger *Ledger) VerifyChain() {
 }
 
 // GetGenesisBlock returns the genesis block of the ledger
-func (ledger *Ledger) GetGenesisBlock() *types.Block {
+func (ledger *Ledger) GetGenesisBlock() *types.BlockHeader {
 
-	genesisBlock, err := ledger.GetBlockByNumber(0)
+	genesisBlockHeader, err := ledger.GetBlockByNumber(0)
 	if err != nil {
 		panic(err)
 	}
-	return genesisBlock
+	return genesisBlockHeader
 }
 
 // AppendBlock appends a new block to the ledger,flag = true pack up block ,flag = false sync block
@@ -141,15 +141,30 @@ func (ledger *Ledger) AppendBlock(block *types.Block, flag bool) error {
 }
 
 // GetBlockByNumber gets the block by the given number
-func (ledger *Ledger) GetBlockByNumber(number uint32) (*types.Block, error) {
+func (ledger *Ledger) GetBlockByNumber(number uint32) (*types.BlockHeader, error) {
 
 	return ledger.block.GetBlockByNumber(number)
 }
 
 // GetBlockByHash returns the block detail by hash
-func (ledger *Ledger) GetBlockByHash(blockHashBytes []byte) (*types.Block, error) {
+func (ledger *Ledger) GetBlockByHash(blockHashBytes []byte) (*types.BlockHeader, error) {
 
 	return ledger.block.GetBlockByHash(blockHashBytes)
+}
+
+//GetTransactionHashList returns transactions hash list by block number
+func (ledger *Ledger) GetTransactionHashList(number uint32) ([]crypto.Hash, error) {
+
+	txHashsBytes, err := ledger.block.GetTransactionHashList(number)
+	if err != nil {
+		return nil, err
+	}
+
+	txHashs := []crypto.Hash{}
+
+	utils.Deserialize(txHashsBytes, &txHashs)
+
+	return txHashs, nil
 }
 
 // Height returns height of ledger, return -1 if not exist
@@ -170,6 +185,21 @@ func (ledger *Ledger) GetLastBlockHash() (crypto.Hash, error) {
 	}
 
 	return lastBlock.Hash(), nil
+}
+
+//GetBlockHashByNumber returns block hash by block number
+func (ledger *Ledger) GetBlockHashByNumber(blockNum uint32) (crypto.Hash, error) {
+
+	hashBytes, err := ledger.block.GetBlockHashByNumber(blockNum)
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+
+	blockHash := new(crypto.Hash)
+
+	blockHash.SetBytes(hashBytes)
+
+	return *blockHash, err
 }
 
 // GetTxsByBlockHash returns transactions  by block hash and transactionType

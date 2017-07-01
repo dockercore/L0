@@ -34,12 +34,14 @@ type LedgerInterface interface {
 	Height() (uint32, error)
 	GetBalanceNonce(addr accounts.Address) (*big.Int, uint32)
 	GetTransaction(txHash crypto.Hash) (*types.Transaction, error)
-	GetBlockByHash(blockHashBytes []byte) (*types.Block, error)
-	GetBlockByNumber(number uint32) (*types.Block, error)
+	GetBlockByHash(blockHashBytes []byte) (*types.BlockHeader, error)
+	GetBlockByNumber(number uint32) (*types.BlockHeader, error)
+	GetBlockHashByNumber(blockNum uint32) (crypto.Hash, error)
 	GetLastBlockHash() (crypto.Hash, error)
 	GetTxsByBlockHash(blockHashBytes []byte, transactionType uint32) (types.Transactions, error)
 	GetTxsByBlockNumber(blockNumber uint32, transactionType uint32) (types.Transactions, error)
 	GetTxsByMergeTxHash(mergeTxHash crypto.Hash) (types.Transactions, error)
+	GetTransactionHashList(number uint32) ([]crypto.Hash, error)
 }
 
 //Ledger ledger rpc api
@@ -62,6 +64,12 @@ type GetTxsByBlockNumberArgs struct {
 type GetTxsByBlockHashArgs struct {
 	BlockHash string
 	TxType    uint32
+}
+
+//Block json rpc return block
+type Block struct {
+	BlockHeader *types.BlockHeader `json:"header"`
+	TxHashList  []crypto.Hash      `json:"txHashList"`
 }
 
 //Height get blockchain height
@@ -93,23 +101,47 @@ func (l *Ledger) GetTxByHash(txHashBytes string, reply *types.Transaction) error
 	return nil
 }
 
-// GetBlockByHash returns the block detail by hash
-func (l *Ledger) GetBlockByHash(blockHashBytes string, reply *types.Block) error {
-	block, err := l.ledger.GetBlockByHash(crypto.HexToHash(blockHashBytes).Bytes())
+//GetBlockHashByNumber return block hash by block number
+func (l *Ledger) GetBlockHashByNumber(blockNumber uint32, reply *crypto.Hash) error {
+	blockHash, err := l.ledger.GetBlockHashByNumber(blockNumber)
 	if err != nil {
 		return err
 	}
-	*reply = *block
+	*reply = blockHash
+	return nil
+}
+
+// GetBlockByHash returns the block detail by hash
+func (l *Ledger) GetBlockByHash(blockHashBytes string, reply *Block) error {
+	blockHeader, err := l.ledger.GetBlockByHash(crypto.HexToHash(blockHashBytes).Bytes())
+	if err != nil {
+		return err
+	}
+
+	txHashList, err := l.ledger.GetTransactionHashList(blockHeader.Height)
+	if err != nil {
+		return err
+	}
+
+	*reply = Block{BlockHeader: blockHeader, TxHashList: txHashList}
+
 	return nil
 }
 
 //GetBlockByNumber get block by block number
-func (l *Ledger) GetBlockByNumber(number uint32, reply *types.Block) error {
-	block, err := l.ledger.GetBlockByNumber(number)
+func (l *Ledger) GetBlockByNumber(number uint32, reply *Block) error {
+	blockHeader, err := l.ledger.GetBlockByNumber(number)
 	if err != nil {
 		return err
 	}
-	*reply = *block
+
+	txHashList, err := l.ledger.GetTransactionHashList(blockHeader.Height)
+	if err != nil {
+		return err
+	}
+
+	*reply = Block{BlockHeader: blockHeader, TxHashList: txHashList}
+
 	return nil
 }
 
