@@ -1,18 +1,18 @@
 // Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
 //
 // This file is part of L0
-// 
+//
 // The L0 is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // The L0 is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// 
+//
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 
+	"bytes"
 	"github.com/bocheninc/L0/components/crypto"
 	"github.com/bocheninc/L0/components/utils"
 )
@@ -110,8 +111,11 @@ func (m *Msg) read(r io.Reader) (int, error) {
 // write encodes msg to the writer
 func (m *Msg) write(w io.Writer) (int, error) {
 	data := m.Serialize()
-	data = append(utils.VarInt(uint64(len(data))), data...)
-	return w.Write(data)
+	buf := bytes.NewBuffer(utils.VarInt(uint64(len(data))))
+	if _, err := buf.Write(data); err != nil {
+		return 0, err
+	}
+	return w.Write(buf.Bytes())
 }
 
 // NewMsg New Message used by msgType chainId and payload
