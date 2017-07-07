@@ -25,7 +25,6 @@ import (
 
 	"github.com/bocheninc/L0/components/log"
 	"github.com/bocheninc/L0/core/consensus"
-	"github.com/bocheninc/L0/core/types"
 )
 
 // NewNoops Create Noops
@@ -37,7 +36,7 @@ func NewNoops(options *Options, stack consensus.IStack) *Noops {
 	if noops.options.CommitTxChanSize < options.BlockSize {
 		noops.options.CommitTxChanSize = options.BlockSize
 	}
-	noops.committedTxsChan = make(chan *consensus.CommittedTxs, noops.options.CommittedTxsChanSize)
+	noops.committedTxsChan = make(chan *consensus.OutputTxs, noops.options.CommittedTxsChanSize)
 	noops.broadcastChan = make(chan *consensus.BroadcastConsensus, noops.options.BroadcastChanSize)
 	noops.blockTimer = time.NewTimer(noops.options.BlockInterval)
 	noops.blockTimer.Stop()
@@ -49,7 +48,7 @@ func NewNoops(options *Options, stack consensus.IStack) *Noops {
 type Noops struct {
 	options          *Options
 	stack            consensus.IStack
-	committedTxsChan chan *consensus.CommittedTxs
+	committedTxsChan chan *consensus.OutputTxs
 	broadcastChan    chan *consensus.BroadcastConsensus
 	blockTimer       *time.Timer
 	seqNo            uint64
@@ -86,22 +85,22 @@ func (noops *Noops) Start() {
 
 func (noops *Noops) processBlock() {
 	noops.blockTimer.Stop()
-	if noops.stack.Len() > 0 {
-		txs := []*types.Transaction{}
-		noops.stack.IterTransaction(func(tx *types.Transaction) bool {
-			txs = append(txs, tx)
-			if len(txs) == noops.options.BlockSize {
-				return true
-			}
-			return false
-		})
-		txs = noops.stack.VerifyTxsInConsensus(txs, true)
-		noops.seqNo++
-		log.Infof("Noops write block (%d transactions)  %d", len(txs), noops.seqNo)
-		seqNos := []uint64{noops.seqNo}
-		noops.committedTxsChan <- &consensus.CommittedTxs{Time: uint32(time.Now().Unix()), Transactions: txs, SeqNos: seqNos}
-		noops.stack.Removes(txs)
+
+	txss := noops.stack.FetchGroupingTxsInTxPool(noops.options.BlockSize, 1)
+	if len(txss) != 2 {
+		return
 	}
+	txs := txss[1]
+	pass := noops.stack.VerifyTxsInConsensus(txs, true)
+	if !pass {
+		return
+	}
+	noops.seqNo++
+	log.Infof("Noops write block (%d transactions)  %d", len(txs), noops.seqNo)
+	outputs := []*consensus.CommittedTxs{}
+	outputs = append(outputs, &consensus.CommittedTxs{Skip: false, Time: uint32(time.Now().Unix()), Transactions: txs, SeqNo: noops.seqNo})
+	noops.committedTxsChan <- &consensus.OutputTxs{Outputs: outputs}
+
 	noops.blockTimer = time.NewTimer(noops.options.BlockInterval)
 }
 
@@ -123,6 +122,6 @@ func (noops *Noops) BroadcastConsensusChannel() <-chan *consensus.BroadcastConse
 }
 
 // CommittedTxsChannel Commit block data
-func (noops *Noops) CommittedTxsChannel() <-chan *consensus.CommittedTxs {
+func (noops *Noops) CommittedTxsChannel() <-chan *consensus.OutputTxs {
 	return noops.committedTxsChan
 }

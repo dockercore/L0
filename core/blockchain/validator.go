@@ -1,27 +1,8 @@
-// Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
-//
-// This file is part of L0
-//
-// The L0 is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The L0 is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 package blockchain
 
 import (
 	"bytes"
 	"container/list"
-	"errors"
 	"math/big"
 	"strings"
 	"sync"
@@ -31,6 +12,7 @@ import (
 	"github.com/bocheninc/L0/components/log"
 	"github.com/bocheninc/L0/components/utils"
 	"github.com/bocheninc/L0/core/accounts"
+	"github.com/bocheninc/L0/core/consensus"
 	"github.com/bocheninc/L0/core/coordinate"
 	"github.com/bocheninc/L0/core/ledger"
 	"github.com/bocheninc/L0/core/params"
@@ -38,87 +20,36 @@ import (
 )
 
 type validatorAccount struct {
-	txs    *list.List
-	txMap  map[crypto.Hash]*list.Element
-	amount *big.Int
-	nonce  uint32
+	txsList    *list.List
+	txsMap     map[crypto.Hash]*list.Element
+	currTx     *types.Transaction
+	amount     *big.Int
+	nonce      uint32
+	accessTime uint32
 	sync.RWMutex
 }
 
-type validatorFilter struct {
-	sync.Mutex
-	delTxsChan    chan types.Transactions
-	txCacheFilter map[crypto.Hash]bool
-}
-
 type Validator struct {
+	isValid  bool
+	ledger   *ledger.Ledger
+	accounts map[string]*validatorAccount
 	sync.Mutex
-	isValid        bool
-	txPool         *LinkedList
-	ledger         *ledger.Ledger
-	accounts       map[string]*validatorAccount
-	txsCacheFilter *validatorFilter
-	delTxsChan     chan types.Transactions
-}
-
-func newValidatorFilter() *validatorFilter {
-	return &validatorFilter{
-		txCacheFilter: make(map[crypto.Hash]bool),
-		delTxsChan:    make(chan types.Transactions, 100),
-	}
-}
-
-func (vf *validatorFilter) addTxCacheFilter(txHash crypto.Hash) {
-	vf.Lock()
-	defer vf.Unlock()
-
-	vf.txCacheFilter[txHash] = true
-}
-
-func (vf *validatorFilter) removeTxCacheFilter(txHash crypto.Hash) {
-	vf.Lock()
-	defer vf.Unlock()
-
-	delete(vf.txCacheFilter, txHash)
-}
-
-func (vf *validatorFilter) hasTxInCacheFilter(txHash crypto.Hash) bool {
-	vf.Lock()
-	defer vf.Unlock()
-
-	_, ok := vf.txCacheFilter[txHash]
-
-	return ok
-}
-
-func (vf *validatorFilter) removeTxsCacheFilter(txs types.Transactions) {
-	for _, tx := range txs {
-		vf.removeTxCacheFilter(tx.Hash())
-	}
 }
 
 func newValidatorAccount(address accounts.Address, leger *ledger.Ledger) *validatorAccount {
 	amount, nonce, _ := leger.GetBalance(address)
 	return &validatorAccount{
-		amount: amount,
-		nonce:  nonce + uint32(1),
-		txs:    list.New(),
-		txMap:  make(map[crypto.Hash]*list.Element),
+		txsList: list.New(),
+		txsMap:  make(map[crypto.Hash]*list.Element),
+		amount:  amount,
+		nonce:   nonce + uint32(1),
 	}
-}
-
-func (va *validatorAccount) addAmount(tx *types.Transaction) {
-	va.Lock()
-	defer va.Unlock()
-	va.amount = va.amount.Add(va.amount, tx.Amount())
-	log.Info("RemoveTxInVerify va.amount: ", va.amount)
 }
 
 func (va *validatorAccount) addTransaction(tx *types.Transaction) bool {
 	va.Lock()
 	defer va.Unlock()
 
-	addr := tx.Sender()
 	isOK := true
 	amount := (&big.Int{}).Sub(va.amount, tx.Amount())
 	nonce := va.nonce
@@ -139,113 +70,258 @@ func (va *validatorAccount) addTransaction(tx *types.Transaction) bool {
 		if nonce != tx.Nonce() || amount.Sign() < 0 {
 			isOK = false
 		}
-	case types.TypeContractInit:
-	//TODO
-	case types.TypeContractInvoke:
-	//TODO
-	case types.TypeContractQuery:
-	//TODO
+	case types.TypeContractInit, types.TypeContractInvoke, types.TypeContractQuery:
+		//TODO
 	default:
-		log.Errorf("add: unknow tx's type, tx_hash: %v, tx_type: %v", tx.Hash().String(), tx.GetType())
+		log.Errorf("[Validator] add: unknow tx's type, tx_hash: %v, tx_type: %v", tx.Hash().String(), tx.GetType())
 	}
 
 	if isOK {
-		ele := va.txs.PushBack(tx)
-		va.txMap[tx.Hash()] = ele
+		va.txsMap[tx.Hash()] = va.txsList.PushBack(tx)
 		va.amount.Set(amount)
 		if tx.GetType() != types.TypeMerged {
 			va.nonce++
 		}
 
-		log.Debugf("add: new tx, tx_hash: %v, tx_sender: %v, tx_type: %v, tx_amount: %v, tx_nonce: %v, va.amount: %v, va.nonce: %v",
-			tx.Hash().String(), addr.String(), tx.GetType(), tx.Amount(), tx.Nonce(), va.amount, va.nonce)
+		log.Debugf("[Validator] add: new tx, tx_hash: %v, tx_sender: %v, tx_type: %v, tx_amount: %v, tx_nonce: %v, va.amount: %v, va.nonce: %v",
+			tx.Hash().String(), tx.Sender().String(), tx.GetType(), tx.Amount(), tx.Nonce(), va.amount, va.nonce)
 		return true
 	}
 
-	log.Debugf("can't add: new tx, tx_hash: %v, tx_sender: %v, tx_type: %v, tx_amount: %v, tx_nonce: %v, va.amount: %v, va.nonce: %v",
-		tx.Hash().String(), addr.String(), tx.GetType(), tx.Amount(), tx.Nonce(), va.amount, va.nonce)
+	log.Debugf("[Validator] can't add: new tx, tx_hash: %v, tx_sender: %v, tx_type: %v, tx_amount: %v, tx_nonce: %v, va.amount: %v, va.nonce: %v",
+		tx.Hash().String(), tx.Sender().String(), tx.GetType(), tx.Amount(), tx.Nonce(), va.amount, va.nonce)
 	return false
 }
 
-func (va *validatorAccount) removeTransaction(tx *types.Transaction) bool {
+func (va *validatorAccount) hasTransaction(tx *types.Transaction) bool {
 	va.Lock()
 	defer va.Unlock()
 
-	if va.txs.Len() > 0 {
-		ele := va.txs.Front()
-		data := ele.Value.(*types.Transaction)
-		if bytes.Equal(data.Hash().Bytes(), tx.Hash().Bytes()) {
-			delete(va.txMap, tx.Hash())
-			va.txs.Remove(ele)
-			return true
+	_, ok := va.txsMap[tx.Hash()]
+
+	return ok
+}
+
+func (va *validatorAccount) getAccountTransactionSize() int {
+	va.Lock()
+	defer va.Unlock()
+	return va.txsList.Len()
+}
+
+func (va *validatorAccount) hasTransactionByHash(txHash crypto.Hash) (*types.Transaction, bool) {
+	va.Lock()
+	defer va.Unlock()
+
+	elem, ok := va.txsMap[txHash]
+	if ok {
+		return elem.Value.(*types.Transaction), ok
+	}
+
+	return nil, ok
+}
+
+func (va *validatorAccount) rollbackAndRemoveTransaction(tx *types.Transaction) {
+	va.Lock()
+	defer va.Unlock()
+
+	storeElem := va.txsMap[tx.Hash()]
+	va.txsList.Remove(storeElem)
+	delete(va.txsMap, tx.Hash())
+	va.amount = va.amount.Add(va.amount, tx.Amount())
+}
+
+func (va *validatorAccount) committedAndRemoveTransaction(tx *types.Transaction) {
+	va.Lock()
+	defer va.Unlock()
+
+	storeElem, ok := va.txsMap[tx.Hash()]
+	if ok {
+		va.txsList.Remove(storeElem)
+		delete(va.txsMap, tx.Hash())
+		var priv *list.Element
+		for delElem := storeElem.Prev(); delElem != nil; delElem = priv {
+			priv = delElem.Prev()
+			ptx := priv.Value.(*types.Transaction)
+			va.amount.Add(va.amount, ptx.Amount())
+			va.txsList.Remove(priv)
+			delete(va.txsMap, ptx.Hash())
+		}
+	} else {
+		va.amount.Sub(va.amount, tx.Amount())
+	}
+}
+
+func (va *validatorAccount) updateTransactionReceiverBalance(tx *types.Transaction) {
+	va.Lock()
+	defer va.Unlock()
+
+	va.amount = va.amount.Add(va.amount, tx.Amount())
+}
+
+func (va *validatorAccount) iterTransaction(function func(tx *types.Transaction) bool) {
+	va.Lock()
+	defer va.Unlock()
+
+	var currTxElem *list.Element
+	if va.currTx == nil {
+		currTxElem = va.txsList.Front()
+	} else {
+		var ok bool
+		currTxElem, ok = va.txsMap[va.currTx.Hash()]
+		if !ok {
+			currTxElem = va.txsList.Front()
 		} else {
-			log.Errorf("trx order different between consensus and leger, txs_list_first: %v, cur_tx: %v",
-				data.Hash().String(), tx.Hash().String())
-			// TODO  Delete all the transactions before this transaction
-			// TODO And update amount of sender
-			// TODO or this node stop receive tx after 20s, then reset cache
+			currTxElem = currTxElem.Next()
 		}
 	}
 
-	return false
+	if va.currTx == nil && currTxElem == nil {
+		log.Debugf("[Validator] va.currTx is Null")
+		return
+	}
+
+	//va.currTx = currTxElem.Value.(*types.Transaction)
+	//log.Debugf("[Validator] currTxElem_hash: %s, currTx_hash: %s", currTxElem.Value.(*types.Transaction).Hash().String(), va.currTx.Hash().String())
+	for elem := currTxElem; elem != nil; elem = elem.Next() {
+		if !function(elem.Value.(*types.Transaction)) {
+			log.Debugf("[Validator] currTx_hash: %s", va.currTx.Hash().String())
+			break
+		}
+		va.currTx = elem.Value.(*types.Transaction)
+	}
 }
 
-func (va *validatorAccount) checkTransaction(tx *types.Transaction) (bool, error) {
+func (va *validatorAccount) checkExceptionTransaction(tx *types.Transaction) bool {
 	va.Lock()
 	defer va.Unlock()
 
-	if ele, ok := va.txMap[tx.Hash()]; ok {
-		otx := ele.Value.(*types.Transaction)
-		res := otx.Amount().Cmp(tx.Amount())
-		if res > 0 {
-			va.amount = va.amount.Add(va.amount, (&big.Int{}).Sub(otx.Amount(), tx.Amount()))
-		} else if res < 0 {
-			amount := (&big.Int{}).Set(va.amount)
-			amount = amount.Add(amount, (&big.Int{}).Sub(otx.Amount(), tx.Amount()))
-			if amount.Sign() >= 0 {
-				va.amount.Set(amount)
-			} else {
-				for be := va.txs.Back(); be != nil; be = be.Prev() {
-					if be.Value.(*types.Transaction).Nonce() < otx.Nonce() {
-						return true, errors.New("Tx amount is big")
-					}
+	diffNonce := int32(va.nonce - tx.Nonce())
+	if _, ok := va.txsMap[tx.Hash()]; !ok {
+		if diffNonce <= 0 || diffNonce > int32(va.txsList.Len()) {
+			log.Warningf("[Validator] checkExceptionTransaction fail due to va.nonce: %d > tx.Nonce: %d, tx_hash: ",
+				va.nonce, tx.Nonce(), tx.Hash().String())
+			return false
+		}
+	} else {
+		return true
+	}
 
-					if amount.Sign() < 0 {
-						amount = amount.Add(amount, be.Value.(*types.Transaction).Amount())
-					} else {
-						var next *list.Element
-						va.nonce = be.Value.(*types.Transaction).Nonce()
-						for ne := be.Next(); ne != nil; ne = next {
-							next = ne.Next()
-							va.txs.Remove(ne)
-							delete(va.txMap, ne.Value.(*types.Transaction).Hash())
-						}
-						break
-					}
-
-				}
-				va.amount.Set(amount)
+	log.Debugf("[Validator] checkExceptionTransaction va.nonce: %d, tx.Nonce: %d, diffNonce: %d", va.nonce, tx.Nonce(), diffNonce)
+	var cnt int32
+	var next *list.Element
+	if diffNonce < int32(va.txsList.Len()/2) {
+		for be := va.txsList.Back(); be != nil; be = next {
+			next = be.Prev()
+			cnt++
+			if cnt > diffNonce {
+				break
 			}
-		} else {
-
-			//log.Debugf("innoment checkTranaction, otx_hash: %v, otx_nonce: %v, otx.amount: %v, " +
-			//	"tx_hash: %v, tx_nonce: %v, tx_amount", otx.Hash().String(), otx.Nonce(), otx.Amount(),
-			//	tx.Hash().String(), tx.Nonce(), tx.Amount())
-
-			log.Debugf("innoment checkTranaction, otx_hash: %v, otx: %v "+
-				"tx_hash: %v, otx: %v", otx.Hash().String(), otx,
-				tx.Hash().String(), tx)
-			return false, nil
 		}
-
-		va.txs.InsertAfter(tx, ele)
-		va.txs.Remove(ele)
-		va.txMap[tx.Hash()] = ele
-		delete(va.txMap, otx.Hash())
-		log.Debugf("checkTransaction changeTx, tx_hash: %v", tx.Hash().String())
+	} else {
+		diffLen := int32(va.txsList.Len()) - diffNonce
+		for fe := va.txsList.Front(); fe != nil; fe = next {
+			next = fe.Next()
+			cnt++
+			if cnt > diffLen {
+				break
+			}
+		}
 	}
 
-	return false, nil
+	//TODO check exception tx and replace
+	otx := next.Value.(*types.Transaction)
+	res := otx.Amount().Cmp(tx.Amount())
+	if res > 0 {
+		va.amount = va.amount.Add(va.amount, (&big.Int{}).Sub(otx.Amount(), tx.Amount()))
+	} else if res < 0 {
+		amount := (&big.Int{}).Add(va.amount, (&big.Int{}).Sub(otx.Amount(), tx.Amount()))
+		if amount.Sign() >= 0 {
+			va.amount.Set(amount)
+		} else {
+			for be := va.txsList.Back(); be != next; be = be.Prev() {
+				if be.Value.(*types.Transaction).Nonce() < otx.Nonce() {
+					log.Warningf("[Validator] Rollback all transactions, but can't meet requirements")
+					return false
+				}
+
+				if amount.Sign() < 0 {
+					amount = amount.Add(amount, be.Value.(*types.Transaction).Amount())
+				} else {
+					va.nonce = be.Value.(*types.Transaction).Nonce()
+					for ne := be.Next(); ne != nil; ne = next {
+						next = ne.Next()
+						va.txsList.Remove(ne)
+						delete(va.txsMap, ne.Value.(*types.Transaction).Hash())
+					}
+					break
+				}
+
+			}
+		}
+	} else {
+		log.Debugf("[Validator] innocement check transaction, maybe have bug, tx_hash: %s, va_nonce: %v, va_amount: %v,"+
+			"tx_nonce: %v, tx_nonce: %v", tx.Hash().String(), va.nonce, va.amount, tx.Nonce(), tx.Amount())
+		return true
+	}
+
+	va.txsMap[tx.Hash()] = va.txsList.InsertAfter(tx, next)
+	va.txsList.Remove(next)
+	delete(va.txsMap, otx.Hash())
+
+	return true
+
+}
+
+func NewValidator(ledger *ledger.Ledger) *Validator {
+	validator := &Validator{
+		isValid:  true,
+		ledger:   ledger,
+		accounts: make(map[string]*validatorAccount),
+	}
+	go validator.Loop()
+	return validator
+}
+
+func (vr *Validator) Loop() {
+	for {
+		select {}
+	}
+}
+
+func (vr *Validator) startValidator() {
+	vr.isValid = true
+}
+
+func (vr *Validator) stopValidator() {
+	vr.isValid = false
+}
+
+func (vr *Validator) getTransactionByHash(txHash crypto.Hash) (*types.Transaction, bool) {
+	for _, senderAccount := range vr.accounts {
+		tx, ok := senderAccount.hasTransactionByHash(txHash)
+		if ok {
+			return tx, ok
+		}
+	}
+
+	return nil, false
+}
+
+func (vr *Validator) getBalanceNonce(addr accounts.Address) (*big.Int, uint32) {
+	senderAccount := vr.fetchSenderAccount(addr)
+	senderAccount.Lock()
+	defer senderAccount.Unlock()
+	log.Debugf("[Validator] add: sender: %s, amount: %v, nonce: %v", addr.String(), senderAccount.amount, senderAccount.nonce)
+	return senderAccount.amount, senderAccount.nonce
+}
+
+func (vr *Validator) getValidatorSize() int {
+	var cnt int
+	for _, senderAccount := range vr.accounts {
+		cnt += senderAccount.getAccountTransactionSize()
+	}
+
+	return cnt
 }
 
 func (vr *Validator) checkIssueTransaction(tx *types.Transaction) bool {
@@ -256,7 +332,6 @@ func (vr *Validator) checkIssueTransaction(tx *types.Transaction) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -264,7 +339,7 @@ func (vr *Validator) checkTransaction(tx *types.Transaction) bool {
 	isOK := true
 
 	if !(strings.Compare(tx.FromChain(), params.ChainID.String()) == 0 || (strings.Compare(tx.ToChain(), params.ChainID.String()) == 0)) {
-		log.Errorf("invalid transaction, fromCahin or toChain == params.ChainID")
+		log.Errorf("[Validator] invalid transaction, fromCahin or toChain == params.ChainID")
 		return false
 	}
 
@@ -272,14 +347,14 @@ func (vr *Validator) checkTransaction(tx *types.Transaction) bool {
 	case types.TypeAtomic:
 		//TODO fromChain==toChain
 		if strings.Compare(tx.FromChain(), tx.ToChain()) != 0 {
-			log.Errorf("add: fail[should fromchain == tochain], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
+			log.Errorf("[Validator] add: fail[should fromchain == tochain], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
 				tx.Hash().String(), tx.GetType(), tx.FromChain(), tx.ToChain())
 			isOK = false
 		}
 	case types.TypeAcrossChain:
 		//TODO the len of fromchain == the len of tochain
 		if !(len(tx.FromChain()) == len(tx.ToChain()) && strings.Compare(tx.FromChain(), tx.ToChain()) != 0) {
-			log.Errorf("add: fail[should(chain same floor, and different)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
+			log.Errorf("[Validator] add: fail[should(chain same floor, and different)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
 				tx.Hash().String(), tx.GetType(), tx.FromChain(), tx.ToChain())
 			isOK = false
 		}
@@ -289,7 +364,7 @@ func (vr *Validator) checkTransaction(tx *types.Transaction) bool {
 		fromChain := coordinate.HexToChainCoordinate(tx.FromChain())
 		toChainParent := coordinate.HexToChainCoordinate(tx.ToChain()).ParentCoorinate()
 		if !bytes.Equal(fromChain, toChainParent) || strings.Compare(address.String(), tx.Recipient().String()) != 0 {
-			log.Errorf("add: fail[should(|fromChain - toChain| = 1 and sender_addr == receive_addr)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
+			log.Errorf("[Validator] add: fail[should(|fromChain - toChain| = 1 and sender_addr == receive_addr)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
 				tx.Hash().String(), tx.GetType(), tx.FromChain(), tx.ToChain())
 			isOK = false
 		}
@@ -298,7 +373,7 @@ func (vr *Validator) checkTransaction(tx *types.Transaction) bool {
 		fromChainParent := coordinate.HexToChainCoordinate(tx.FromChain()).ParentCoorinate()
 		toChain := coordinate.HexToChainCoordinate(tx.ToChain())
 		if !bytes.Equal(fromChainParent, toChain) || strings.Compare(address.String(), tx.Recipient().String()) != 0 {
-			log.Errorf("add: fail[should(|fromChain - toChain| = 1 and sender_addr == receive_addr)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
+			log.Errorf("[Validator] add: fail[should(|fromChain - toChain| = 1 and sender_addr == receive_addr)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
 				tx.Hash().String(), tx.GetType(), tx.FromChain(), tx.ToChain())
 			isOK = false
 		}
@@ -310,13 +385,13 @@ func (vr *Validator) checkTransaction(tx *types.Transaction) bool {
 		toChain := coordinate.HexToChainCoordinate(tx.FromChain())
 
 		if !(len(fromChain) == len(toChain) && strings.Compare(fromChain.String(), "00") == 0) {
-			log.Errorf("add: fail[should(the first floor)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
+			log.Errorf("[Validator] add: fail[should(the first floor)], Tx-hash: %v, tx_type: %v, tx_fchain: %v, tx_tchain: %v",
 				tx.Hash().String(), tx.GetType(), tx.FromChain(), tx.ToChain())
 			isOK = false
 		}
 
 		if ok := vr.checkIssueTransaction(tx); !ok {
-			log.Errorf("add: valid issue tx public key fail, tx: %v", tx.Hash().String())
+			log.Errorf("[Validator] add: valid issue tx public key fail, tx: %v", tx.Hash().String())
 			isOK = false
 		}
 
@@ -325,221 +400,249 @@ func (vr *Validator) checkTransaction(tx *types.Transaction) bool {
 	return isOK
 }
 
-func NewValidator(ledger *ledger.Ledger) *Validator {
-	validator := &Validator{
-		isValid:        true,
-		txPool:         NewLinkedList(),
-		ledger:         ledger,
-		accounts:       make(map[string]*validatorAccount),
-		txsCacheFilter: newValidatorFilter(),
-		delTxsChan:     make(chan types.Transactions, 100),
-	}
-	go validator.Loop()
-	return validator
-}
-
-// startValidator - start validator
-func (vr *Validator) startValidator() {
-	vr.isValid = true
-}
-
-// stopValidator - stop validator
-func (vr *Validator) stopValidator() {
-	vr.isValid = false
-}
-
-func (vr *Validator) getTransactionByHash(txHash crypto.Hash) (*types.Transaction, bool) {
-	itx := vr.txPool.Has(txHash.String())
-	if itx != nil {
-		tx := itx.(*types.Transaction)
-		return tx, true
-	}
-
-	return nil, false
-}
-
-func (vr *Validator) getBalanceNonce(addr accounts.Address) (*big.Int, uint32) {
-	senderAccount := vr.getSenderAccount(addr)
-	senderAccount.Lock()
-	defer senderAccount.Unlock()
-
-	return senderAccount.amount, senderAccount.nonce
-}
-
-func (vr *Validator) getSenderAccount(address accounts.Address) *validatorAccount {
-	vr.Lock()
-	account, ok := vr.accounts[address.String()]
-	vr.Unlock()
-
-	if !ok {
-		vr.Lock()
-		vr.accounts[address.String()] = newValidatorAccount(address, vr.ledger)
-		account = vr.accounts[address.String()]
-		vr.Unlock()
-	}
-
-	return account
-}
-
-func (vr *Validator) updateRecipientAccount(tx *types.Transaction) {
-	vr.Lock()
-	defer vr.Unlock()
-
-	if account, ok := vr.accounts[tx.Recipient().String()]; ok {
-		account.amount.Add(account.amount, tx.Amount())
-	}
-}
-
-func (vr *Validator) hasTransaction(tx *types.Transaction) bool {
-	exist := vr.txPool.Contains(tx.Hash().String())
-
-	return exist
-}
-
-func (vr *Validator) checkExceptionTransaction(tx *types.Transaction) (bool, error) {
-	address := tx.Sender()
-	senderAccount := vr.getSenderAccount(address)
-	exist, err := senderAccount.checkTransaction(tx)
-
-	return exist, err
-}
-
-func (vr *Validator) removeTxsForAccount(txs types.Transactions) {
-	for _, tx := range txs {
-		if strings.Compare(tx.FromChain(), params.ChainID.String()) == 0 {
-			address := tx.Sender()
-			senderAccount := vr.getSenderAccount(address)
-			if ok := senderAccount.removeTransaction(tx); ok {
-				//vr.txPool.Remove(tx)
-			}
+func (vr *Validator) verifyTransaction(tx *types.Transaction) bool {
+	var ok bool
+	senderAccount := vr.fetchSenderAccount(tx.Sender())
+	if ok = senderAccount.hasTransaction(tx); !ok {
+		if ok = senderAccount.checkExceptionTransaction(tx); !ok {
+			ok = senderAccount.addTransaction(tx)
 		}
-
-		// TODO: to update Recipient
-		vr.updateRecipientAccount(tx)
-	}
-}
-
-func (vr *Validator) Loop() {
-	for {
-		select {
-		case txs := <-vr.delTxsChan:
-			vr.removeTxsForAccount(txs)
-		case txs := <-vr.txsCacheFilter.delTxsChan:
-			vr.txsCacheFilter.removeTxsCacheFilter(txs)
-		}
-	}
-}
-
-func (vr *Validator) TxsLenInTxPool() int {
-	return vr.txPool.Len()
-}
-
-func (vr *Validator) IterElementInTxPool(function func(*types.Transaction) bool) {
-	//vr.txPool.IterElement(function)
-
-	t1 := time.Now()
-	vr.txPool.IterElement(func(element IElement) bool {
-		if vr.isValid {
-			txHash := element.(*types.Transaction).Hash()
-			if vr.txsCacheFilter.hasTxInCacheFilter(txHash) {
-				return false
-			}
-			vr.txsCacheFilter.addTxCacheFilter(txHash)
-		}
-		return function(element.(*types.Transaction))
-	})
-
-	elapsed := time.Since(t1)
-	log.Info(" < --- > IterElementInTxPool elapsed: ", elapsed)
-
-}
-
-func (vr *Validator) VerifyTxInTxPool(tx *types.Transaction) bool {
-	if vr.isValid == false {
-		ok := vr.checkTransaction(tx)
-		if ok {
-			vr.txPool.Add(tx)
-			log.Debugf("added new tx, tx_hash: %v", tx.Hash().String())
-			return true
-		}
-
-		log.Debugf("can't add new tx, tx_hash: %v", tx.Hash().String())
-		return false
-	}
-
-	address, err := tx.Verfiy()
-	if err != nil {
-		log.Debugf("varify fail, tx_hash: ", tx.Hash().String())
-		return false
-	}
-
-	ok := vr.checkTransaction(tx)
-	if ok {
-		senderAccount := vr.getSenderAccount(address)
-		vr.Lock()
-		if ok = senderAccount.addTransaction(tx); ok {
-			vr.txPool.Add(tx)
-		}
-		vr.Unlock()
 	}
 
 	return ok
 }
 
-func (vr *Validator) VerifyTxsInConsensus(txs types.Transactions, role bool) types.Transactions {
-	if vr.isValid == false || role == true {
-		return txs
-	}
-
-	t1 := time.Now()
+func (vr *Validator) rollbackTransaction(txs types.Transactions) {
 	for _, tx := range txs {
-		if ok := vr.hasTransaction(tx); ok {
-			continue
-		} else if ok, err := vr.checkExceptionTransaction(tx); ok {
-			if err != nil {
-				log.Errorf("VerifyTxsInConsensus invalid transaction, tx_hash: %v, tx_type: %v, tx_amount: %v, tx_nonce: %v",
-					tx.Hash().String(), tx.GetType(), tx.Amount(), tx.Nonce())
-				return make(types.Transactions, 0)
-			}
-		} else {
-			ok := vr.VerifyTxInTxPool(tx)
-			if !ok {
-				if ok = vr.hasTransaction(tx); !ok {
-					log.Errorf("VerifyTxsInConsensus can't add transaction, tx_hash: %v, tx_type: %v, tx_amount: %v, tx_nonce: %v",
-						tx.Hash().String(), tx.GetType(), tx.Amount(), tx.Nonce())
-					return make(types.Transactions, 0)
-				}
-			}
+		log.Debugf("[Validator] rollbacked  Tx: %s", tx.Hash().String())
+		senderAccount := vr.fetchSenderAccount(tx.Sender())
+		if senderAccount.hasTransaction(tx) {
+			senderAccount.rollbackAndRemoveTransaction(tx)
 		}
 	}
-
-	elapsed := time.Since(t1)
-	log.Info(" < --- > VerifyTxsInConsensus elapsed: ", elapsed, " len: ", len(txs), " txPool len: ", vr.txPool.Len())
-
-	return txs
 }
 
-func (vr *Validator) RemoveTxInVerify(txs types.Transactions) {
-	if vr.isValid == false {
-		elements := []IElement{}
-		for _, tx := range txs {
-			elements = append(elements, tx)
-			//TxBufferPool.Put(tx)
+func (vr *Validator) committedTransaction(txs types.Transactions) {
+	for _, tx := range txs {
+		senderAccount := vr.fetchSenderAccount(tx.Sender())
+		senderAccount.committedAndRemoveTransaction(tx)
+		log.Debugf("[Validator] committed txPool Tx: %s", tx.Hash().String())
+
+		if tx.IsLocalChain() {
+			//TODO update receiver balance
+			receiverAccount := vr.fetchReceiverAccount(tx.Recipient())
+			if receiverAccount != nil {
+				receiverAccount.updateTransactionReceiverBalance(tx)
+			}
 		}
-		vr.txPool.Removes(elements)
-		return
+	}
+}
+
+func (vr *Validator) updateTransactionReceiver(txs types.Transactions) {
+	for _, tx := range txs {
+		receiverAccount := vr.fetchReceiverAccount(tx.Recipient())
+		if receiverAccount != nil {
+			receiverAccount.updateTransactionReceiverBalance(tx)
+		}
+	}
+}
+
+func (vr *Validator) fetchSenderAccount(address accounts.Address) *validatorAccount {
+	vr.Lock()
+	defer vr.Unlock()
+
+	account, ok := vr.accounts[address.String()]
+	if !ok {
+		vr.accounts[address.String()] = newValidatorAccount(address, vr.ledger)
+		account = vr.accounts[address.String()]
+	}
+
+	return account
+}
+
+func (vr *Validator) fetchReceiverAccount(address accounts.Address) *validatorAccount {
+	vr.Lock()
+	defer vr.Unlock()
+
+	if account, ok := vr.accounts[address.String()]; ok {
+		return account
+	} else {
+		return nil
+	}
+
+}
+
+func (vr *Validator) PushTxInTxPool(tx *types.Transaction) bool {
+	if vr.isValid == false {
+		return false
+	}
+
+	address, err := tx.Verfiy()
+	if err != nil || !bytes.Equal(address.Bytes(), tx.Sender().Bytes()) {
+		log.Debugf("[Validator] Varify fail, tx_hash: ", tx.Hash().String())
+		return false
+	}
+
+	ok := vr.checkTransaction(tx)
+	if ok {
+		senderAccount := vr.fetchSenderAccount(address)
+		ok = senderAccount.addTransaction(tx)
+	}
+
+	return ok
+}
+
+func (vr *Validator) VerifyTxsInTxPool(txs types.Transactions, primary bool) bool {
+	if vr.isValid == false || primary {
+		return true
 	}
 
 	t1 := time.Now()
-
-	elements := []IElement{}
 	for _, tx := range txs {
-		elements = append(elements, tx)
+		ok := vr.verifyTransaction(tx)
+		if !ok {
+			log.Debugf("[Validator] VerifyTxsInTxPool Exectime: %v", time.Since(t1))
+			return false
+		}
 	}
-	vr.txPool.Removes(elements)
-	vr.delTxsChan <- txs
-	vr.txsCacheFilter.delTxsChan <- txs
 
-	elapsed := time.Since(t1)
-	log.Info(" < --- > RemoveTxInVerify elapsed: ", elapsed, " len: ", len(txs), " txPool len: ", vr.txPool.Len())
+	log.Debugf("[Validator] VerifyTxsInTxPool Exectime: %v", time.Since(t1))
+	return true
+}
+
+type chainIdx struct {
+	idx     int
+	chainID string
+	cnt     int
+	txs     types.Transactions
+}
+
+func (vr *Validator) FetchGroupingTxsInTxPool(groupingNum, maxSizeInGrouping int) []types.Transactions {
+	var cidx *chainIdx
+	var txsCnt int
+	var groupingSize int
+	groupingTxs := make([]types.Transactions, groupingNum+1)
+	groupingMap := make(map[string]map[int]*chainIdx, groupingNum+1)
+
+	t1 := time.Now()
+
+	iterFunc := func(tx *types.Transaction) bool {
+		_, ok := groupingMap[tx.ToChain()]
+		if !ok {
+			groupingSize++
+			if groupingSize > groupingNum {
+				return false
+			}
+			groupingMap[tx.ToChain()] = make(map[int]*chainIdx)
+			groupingMap[tx.ToChain()][0] = &chainIdx{idx: 0, chainID: tx.ToChain(), cnt: 0, txs: make(types.Transactions, 0)}
+			cidx = groupingMap[tx.ToChain()][0]
+		} else {
+			chainLen := len(groupingMap[tx.ToChain()])
+			cidx = groupingMap[tx.ToChain()][chainLen-1]
+			if cidx.cnt > maxSizeInGrouping {
+				groupingSize++
+				if groupingSize > groupingNum {
+					return false
+				}
+
+				groupingMap[tx.ToChain()][chainLen] = &chainIdx{idx: chainLen, chainID: tx.ToChain(), cnt: 0, txs: make(types.Transactions, 0)}
+				cidx = groupingMap[tx.ToChain()][chainLen]
+			}
+		}
+
+		//log.Debugf("FetchGroupingTxsInTxPool cid: %v", cidx)
+		cidx.txs = append(cidx.txs, tx)
+		groupingTxs[0] = append(groupingTxs[0], tx)
+		cidx.cnt++
+		txsCnt++
+		return true
+	}
+
+	for sender, senderAccount := range vr.accounts {
+		log.Debugf("[Validator] senderAccout: %s, txsCnt: %d", sender, senderAccount.getAccountTransactionSize())
+		senderAccount.iterTransaction(iterFunc)
+		if txsCnt > maxSizeInGrouping*groupingNum {
+			break
+		}
+	}
+
+	groupIdx := 1
+	if localChainTxs, ok := groupingMap[params.ChainID.String()]; ok {
+		for _, v := range localChainTxs {
+			groupingTxs[groupIdx] = append(groupingTxs[groupIdx], v.txs...)
+			groupIdx++
+		}
+		delete(groupingMap, params.ChainID.String())
+	}
+
+	for _, oChainTxs := range groupingMap {
+		for _, v := range oChainTxs {
+			groupingTxs[groupIdx] = append(groupingTxs[groupIdx], v.txs...)
+			groupIdx++
+		}
+	}
+
+	log.Debugf("[Validator] FetchGroupingTxsInTxPool Exectime: %v", time.Since(t1))
+	return groupingTxs
+}
+
+func (vr *Validator) GetCommittedTxs(groupingTxs []*consensus.CommittedTxs) (types.Transactions, uint32) {
+	var committedTxs types.Transactions
+	var totalTxs types.Transactions
+	var groupTxs types.Transactions
+	var oChainTxs types.Transactions
+	var blockTime uint32
+
+	log.Debugf("[Validator] receiveTxsLen: %d", len(groupingTxs))
+	for _, txs := range groupingTxs {
+		if txs.Skip {
+			blockTime = txs.Time
+			totalTxs = txs.Transactions
+			continue
+		} else if txs.IsLocalChain {
+			groupTxs = append(groupTxs, txs.Transactions...)
+		} else {
+			oChainTxs = append(oChainTxs, txs.Transactions...)
+		}
+
+		committedTxs = append(committedTxs, txs.Transactions...)
+	}
+
+	vr.RemoveTxsInTxPool(totalTxs, groupTxs, oChainTxs)
+	for _, tx := range committedTxs {
+		log.Debugf("[Validator] committed legder Tx: %s", tx.Hash().String())
+	}
+	return committedTxs, blockTime
+
+}
+
+func (vr *Validator) RemoveTxsInTxPool(totalTxs, groupTxs, oChainTxs types.Transactions) {
+	totalTxsLen := len(totalTxs)
+	groupTxsLen := len(groupTxs)
+	var rollbackTxs types.Transactions
+
+	t1 := time.Now()
+	if totalTxsLen < groupTxsLen {
+		log.Panicf("[Validator] get execption transaction from consensus, duo to totalTxsLen: %d < groupTxsLen: %d", totalTxsLen, groupTxsLen)
+	} else if totalTxsLen > groupTxsLen {
+		totalTxsSet := NewThreadUnsafeSetFromSlice(totalTxs)
+		groupTxsSet := NewThreadUnsafeSetFromSlice(groupTxs)
+
+		diffTxsSet := totalTxsSet.Difference(groupTxsSet)
+		rollbackTxs = diffTxsSet.ToSlice()
+		log.Debugf("[Validator] may drop some transaction in consensus, Exectime: %v, totalTxsLen: %d | groupTxsLen: %d", time.Since(t1), totalTxsLen, groupTxsLen)
+	} else {
+		log.Debugf("[Validator] all transaction passed in consensus, totalTxsLen: %d | groupTxsLen: %d", totalTxsLen, groupTxsLen)
+	}
+
+	if len(rollbackTxs) == 0 {
+		vr.committedTransaction(totalTxs)
+	} else {
+		vr.rollbackTransaction(rollbackTxs)
+		vr.committedTransaction(groupTxs)
+	}
+
+	vr.updateTransactionReceiver(oChainTxs)
+	log.Debugf("[Validator]  RemoveTxsInTxPool Exectime: %v, removeTSize: %v, removeGSize: %v, totalValidtorSize: %v",
+		time.Since(t1), totalTxsLen, groupTxsLen, vr.getValidatorSize())
 }

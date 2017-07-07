@@ -76,13 +76,8 @@ type lbftCore struct {
 
 func (instance *lbftCore) recvMessage(msg *Message) {
 	if msg != nil {
-		if pprep := msg.GetPrePrepare(); pprep != nil {
-			log.Debugf("Replica %s core consenter %s received preprepare message from %s --- instance", instance.lbft.options.ID, pprep.Name, pprep.ReplicaID)
+		if msg.GetPrePrepare() != nil {
 			instance.start()
-		} else if prep := msg.GetPrepare(); prep != nil {
-			log.Debugf("Replica %s core consenter %s received prepare message from %s --- instance", instance.lbft.options.ID, prep.Name, prep.ReplicaID)
-		} else if cmt := msg.GetCommit(); cmt != nil {
-			log.Debugf("Replica %s core consenter %s received commit message from %s --- instance", instance.lbft.options.ID, cmt.Name, cmt.ReplicaID)
 		}
 		instance.msgChan <- msg
 	}
@@ -169,24 +164,11 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 	instance.prePrepareAsync.wait(instance.seqNo, func() {
 		log.Debugf("Replica %s handle requestBatch for consensus %s : seqNo %d (async preprepare)", instance.lbft.options.ID, instance.name, instance.seqNo)
 		instance.waitForVerify()
-		if requestBatch.ID != EMPTYBLOCK && instance.fromChain == instance.lbft.options.Chain {
-			//instance.lbft.stack.Removes(instance.lbft.toTxs(requestBatch))
-			id := requestBatch.ID
+		if requestBatch.ID != EMPTYBLOCK && requestBatch.Index == 0 && instance.fromChain == instance.lbft.options.Chain {
 			t := time.Now()
-			txs := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), true)
+			pass := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), true)
 			log.Debugf("Replica %s VerifyTxsInConsensus elapsed %s for consensus %s(%d)", instance.lbft.options.ID, time.Now().Sub(t), instance.name, instance.seqNo)
-			requestBatch = instance.lbft.toRequestBatch(txs)
-			requestBatch.ID = id
-
-			// go func(requestBatch *RequestBatch) {
-			// 	tts := instance.lbft.toTxs(requestBatch)
-			// 	for _, tt := range tts {
-			// 		tx := tt.(*types.Transaction)
-			// 		sender := tx.Sender()
-			// 		log.Info("xxx verify primay", " ", sender, " ", tx.Nonce(), " ", tx.Hash(), instance.name)
-			// 	}
-			// }(requestBatch)
-
+			_ = pass
 			if instance.fromChain != instance.toChain {
 				log.Infof("Replica %s broadcast requestBatch message to %s  for consensus %s (%d transactions)", instance.lbft.options.ID, instance.toChain, instance.name, len(requestBatch.Requests))
 				instance.lbft.broadcast(instance.toChain, &Message{Type: MESSAGEREQUESTBATCH, Payload: serialize(requestBatch)})
@@ -251,25 +233,13 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 		instance.prePrepareAsync.wait(instance.seqNo, func() {
 			log.Debugf("Replica %s handle preprepare for consensus %s : seqNo %d (async preprepare)", instance.lbft.options.ID, instance.name, instance.seqNo)
 			instance.waitForVerify()
-			if requestBatch.ID != EMPTYBLOCK && instance.lbft.options.Chain == fromChain && instance.seqNo > instance.lbft.seqNum() {
+			if requestBatch.ID != EMPTYBLOCK && requestBatch.Index == 0 && instance.lbft.options.Chain == fromChain && instance.seqNo > instance.lbft.seqNum() {
 				//instance.lbft.stack.Removes(instance.lbft.toTxs(requestBatch))
 				t := time.Now()
-				txs := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), false)
+				pass := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), false)
 				log.Debugf("Replica %s VerifyTxsInConsensus elapsed %s for consensus %s(%d)", instance.lbft.options.ID, time.Now().Sub(t), instance.name, instance.seqNo)
-				trequestBatch := instance.lbft.toRequestBatch(txs)
-				trequestBatch.ID = requestBatch.ID
-				trequestBatch.Time = requestBatch.Time
-				// go func(requestBatch *RequestBatch) {
-				// 	tts := instance.lbft.toTxs(requestBatch)
-				// 	for _, tt := range tts {
-				// 		tx := tt.(*types.Transaction)
-				// 		sender := tx.Sender()
-				// 		log.Info("xxx verify", " ", sender, " ", tx.Nonce(), " ", tx.Hash(), instance.name)
-				// 	}
-				// }(requestBatch)
-
-				if hash(requestBatch) != hash(trequestBatch) {
-					log.Errorf("Replica %s received prePrepare message from %s for consensus %s : different digest (%d==%d)", instance.lbft.options.ID, preprep.ReplicaID, instance.name, len(requestBatch.Requests), len(trequestBatch.Requests))
+				if !pass {
+					log.Errorf("Replica %s received prePrepare message from %s for consensus %s : different digest", instance.lbft.options.ID, preprep.ReplicaID, instance.name)
 					return
 				}
 			}
@@ -328,7 +298,7 @@ func (instance *lbftCore) handlePrepare(prepare *Prepare) {
 		}
 
 		if prepare.Digest != instance.digest {
-			log.Errorf("Replica %s received prepare message from %s for consensus %s : different digest ", instance.lbft.options.ID, prepare.ReplicaID, instance.name)
+			log.Errorf("Replica %s received prepare message from %s for consensus %s : different digest (%s == %s)", instance.lbft.options.ID, prepare.ReplicaID, instance.name, instance.digest, prepare.Digest)
 			return
 		}
 	}
@@ -390,8 +360,7 @@ func (instance *lbftCore) handleCommit(commit *Commit) {
 						SeqNo:        instance.seqNo,
 						RequestBatch: instance.requestBatch,
 					}
-					//instance.lbft.lbftCoreCommittedChan <- ctt
-					instance.lbft.recvConsensusMsgChan <- &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)}
+					instance.lbft.lbftCoreCommittedChan <- ctt
 					instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)})
 				})
 			}

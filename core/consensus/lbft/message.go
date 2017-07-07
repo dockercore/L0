@@ -63,9 +63,10 @@ func (m *Request) Nonce() uint32 {
 
 //RequestBatch Define struct
 type RequestBatch struct {
-	Time     uint32     `protobuf:"varint,1,opt,name=time" json:"time,omitempty"`
-	Requests []*Request `protobuf:"bytes,2,rep,name=requests" json:"requests,omitempty"`
-	ID       int64      `protobuf:"varint,3,opt,name=id" json:"id,omitempty"`
+	Time     uint32
+	Requests []*Request
+	ID       int64
+	Index    uint32
 }
 
 //fromChain from
@@ -89,6 +90,9 @@ func (msg *RequestBatch) fromChain() (from string) {
 func (msg *RequestBatch) toChain() (to string) {
 	if len(msg.Requests) == 0 {
 		return
+	}
+	if msg.Index == 0 {
+		return msg.fromChain()
 	}
 	toChains := map[string]string{}
 	for _, req := range msg.Requests {

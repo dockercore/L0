@@ -173,17 +173,18 @@ func (bc *Blockchain) StartConsensusService() {
 		for {
 			select {
 			case commitedTxs := <-bc.consenter.CommittedTxsChannel():
-				var (
-					// atmoicTxs, acrossChainTxs types.Transactions
-					txs types.Transactions
-				)
-
-				log.Debugf("Get CommitedTxs Number: %d", len(commitedTxs.Transactions))
-				for _, tx := range commitedTxs.Transactions {
-					txs = append(txs, tx)
-				}
+				//var (
+				//	// atmoicTxs, acrossChainTxs types.Transactions
+				//	txs types.Transactions
+				//)
+				txs, time := bc.txValidator.GetCommittedTxs(commitedTxs.Outputs)
+				//log.Debugf("Get CommitedTxs Number: %d", len(commitedTxs.Transactions))
+				//for _, tx := range commitedTxs.Transactions {
+				//	txs = append(txs, tx.(*types.Transaction))
+				//}
+				log.Debugf("[Validator] #v", txs)
 				if txs != nil && len(txs) > 0 {
-					blk := bc.GenerateBlock(txs, uint32(commitedTxs.Time))
+					blk := bc.GenerateBlock(txs, time)
 					// bc.pm.Relay(blk)
 					bc.ProcessBlock(blk)
 				}
@@ -197,8 +198,8 @@ func (bc *Blockchain) ProcessTransaction(tx *types.Transaction) bool {
 	// step 1: validate and mark transaction
 	// step 2: add transaction to txPool
 	// if atomic.LoadUint32(&bc.synced) == 0 {
-	if bc.txValidator.TxsLenInTxPool() < validTxPoolSize {
-		if ok := bc.txValidator.VerifyTxInTxPool(tx); ok {
+	if bc.txValidator.getValidatorSize() < validTxPoolSize {
+		if ok := bc.txValidator.PushTxInTxPool(tx); ok {
 			return true
 		}
 	}

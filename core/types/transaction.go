@@ -21,6 +21,7 @@ package types
 import (
 	"errors"
 	"math/big"
+	"strings"
 	"sync/atomic"
 
 	"github.com/bocheninc/L0/components/crypto"
@@ -182,6 +183,8 @@ func (tx *Transaction) FromChain() string { return tx.Data.FromChain.String() }
 
 // ToChain returns the chain coordinate of the recipient
 func (tx *Transaction) ToChain() string { return tx.Data.ToChain.String() }
+
+func (tx *Transaction) IsLocalChain() bool { return strings.Compare(tx.FromChain(), tx.ToChain()) == 0 }
 
 // Recipient returns the address of the recipient
 func (tx *Transaction) Recipient() accounts.Address {

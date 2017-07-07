@@ -128,7 +128,10 @@ func processMsg(m *Msg, c net.Conn) {
 func sendMsg(m *Msg, c net.Conn) {
 	data := utils.Serialize(*m)
 	data = append(utils.VarInt(uint64(len(data))), data...)
-	c.Write(data)
+	_, err := c.Write(data)
+	if err != nil {
+		c.Close()
+	}
 }
 
 func init() {
@@ -166,6 +169,9 @@ func Relay(m *Msg) {
 	data := utils.Serialize(*m)
 	data = append(utils.VarInt(uint64(len(data))), data...)
 	for _, c := range conn {
-		c.Write(data)
+		_, err := c.Write(data)
+		if err != nil {
+			c.Close()
+		}
 	}
 }

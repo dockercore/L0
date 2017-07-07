@@ -174,6 +174,7 @@ func (cfg *Config) readParamConfig() {
 	pk := getStringSlice("issueaddr.addr", []string{})
 	params.ChainID = utils.HexToBytes(str)
 	params.PublicAddress = pk
+	viper.SetDefault("blockchain.validator", true)
 	params.Validator = viper.GetBool("blockchain.validator")
 }
 

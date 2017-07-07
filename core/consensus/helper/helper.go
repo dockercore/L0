@@ -57,6 +57,6 @@ func (stack *Stack) Len() int {
 }
 
 // GetGroupingTxs  Implenment consensus.IStack
-func (stack *Stack) GetGroupingTxs(maxSize, maxGroup uint64) [][]*types.Transaction {
+func (stack *Stack) GetGroupingTxs(maxSize, maxGroup int) [][]*types.Transaction {
 	return nil
 }

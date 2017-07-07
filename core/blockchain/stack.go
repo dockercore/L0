@@ -20,6 +20,7 @@ package blockchain
 
 import (
 	"github.com/bocheninc/L0/core/types"
+	"github.com/bocheninc/L0/components/log"
 )
 
 // var TxBufferPool = sync.Pool{
@@ -27,32 +28,22 @@ import (
 // }
 
 //VerifyTxsInConsensus verify
-func (bc *Blockchain) VerifyTxsInConsensus(txs []*types.Transaction, primary bool) []*types.Transaction {
-	return bc.txValidator.VerifyTxsInConsensus(txs, primary)
+func (bc *Blockchain) VerifyTxsInConsensus(txs []*types.Transaction, primary bool) bool {
+	return bc.txValidator.VerifyTxsInTxPool(txs, primary)
 }
 
-// GetLastSeqNo To do
+func (bc *Blockchain) FetchGroupingTxsInTxPool(groupingNum, maxSizeInGrouping int) []types.Transactions {
+	log.Debugf("[Validator] FetchGroupingTxsInTxPool groupingNum: %d, maxSizeInGrouping: %d", groupingNum, maxSizeInGrouping)
+	groupingTxs := bc.txValidator.FetchGroupingTxsInTxPool(groupingNum, maxSizeInGrouping)
+	for idx, txs := range groupingTxs {
+		log.Debugf("[Validator] idx: %d, len: %d", idx, len(txs))
+		for _, tx := range txs {
+			log.Debugf("[Validator] tx_hash: %s", tx.Hash().String())
+		}
+	}
+	return groupingTxs
+}
+
 func (bc *Blockchain) GetLastSeqNo() uint64 {
 	return 0
-}
-
-func (bc *Blockchain) IterTransaction(function func(*types.Transaction) bool) {
-	// bc.txPoolValidator.IterTransaction(func(tx *types.Transaction) bool {
-	// 	return function(tx)
-	// })
-	bc.txValidator.IterElementInTxPool(function)
-}
-
-func (bc *Blockchain) Removes(txs []*types.Transaction) {
-	//bc.txPoolValidator.Removes(ntxs)
-	bc.txValidator.RemoveTxInVerify(txs)
-}
-
-func (bc *Blockchain) Len() int {
-	//return bc.txPoolValidator.TxsLen()
-	return bc.txValidator.TxsLenInTxPool()
-}
-
-func (bc *Blockchain) GetGroupingTxs(maxSize, maxGroup uint64) [][]*types.Transaction {
-	return nil
 }
