@@ -35,13 +35,14 @@ func newLbftCore(name string, lbft *Lbft) *lbftCore {
 		commitVote:      vote.NewVote(),
 		prePrepareAsync: lbft.prePrepareAsync,
 		commitAsync:     lbft.commitAsync,
+		firstTime:       time.Now(),
 	}
 	lbftCore.clsTimeoutTimer = time.NewTimer(2 * lbft.options.BlockTimeout)
 	go func() {
 		select {
 		case <-lbftCore.clsTimeoutTimer.C:
-			close(lbftCore.msgChan)
 			lbft.removeInstance(name)
+			close(lbftCore.msgChan)
 		case <-lbftCore.exit:
 		}
 	}()
@@ -70,14 +71,18 @@ type lbftCore struct {
 
 	exit      chan struct{}
 	isRunnig  bool
-	startTime time.Time
-	deltaTime [5]time.Duration
+	firstTime time.Time
 }
 
 func (instance *lbftCore) recvMessage(msg *Message) {
 	if msg != nil {
-		if msg.GetPrePrepare() != nil {
+		if pprep := msg.GetPrePrepare(); pprep != nil {
+			log.Debugf("Replica %s core consenter %s received preprepare message from %s --- instance", instance.lbft.options.ID, pprep.Name, pprep.ReplicaID)
 			instance.start()
+		} else if prep := msg.GetPrepare(); prep != nil {
+			log.Debugf("Replica %s core consenter %s received prepare message from %s --- instance", instance.lbft.options.ID, prep.Name, prep.ReplicaID)
+		} else if cmt := msg.GetCommit(); cmt != nil {
+			log.Debugf("Replica %s core consenter %s received commit message from %s --- instance", instance.lbft.options.ID, cmt.Name, cmt.ReplicaID)
 		}
 		instance.msgChan <- msg
 	}
@@ -88,9 +93,13 @@ func (instance *lbftCore) start() {
 		log.Warnf("Replica %s core consenter %s alreay started", instance.lbft.options.ID, instance.name)
 		return
 	}
+	if time.Since(instance.firstTime) > instance.lbft.options.BlockTimeout {
+		log.Warnf("Replica %s core consenter %s delay too long", instance.lbft.options.ID, instance.name)
+		return
+	}
 	instance.isRunnig = true
 	instance.clsTimeoutTimer.Stop()
-	timeoutTimer := time.NewTimer(instance.lbft.options.BlockTimeout)
+	timeoutTimer := time.NewTimer(instance.lbft.options.BlockTimeout - time.Since(instance.firstTime))
 	go func() {
 		for {
 			select {
@@ -133,7 +142,6 @@ func (instance *lbftCore) start() {
 			}
 		}
 	}()
-	instance.startTime = time.Now()
 	log.Debugf("Replica %s core consenter %s started", instance.lbft.options.ID, instance.name)
 }
 
@@ -292,7 +300,6 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 	//instance.seqNo = preprep.SeqNo
 	instance.digest = hash(instance.requestBatch)
 	instance.isPassPrePrepare = true
-	instance.deltaTime[1] = time.Since(instance.startTime)
 	prepare := &Prepare{
 		Name:      instance.name,
 		PrimaryID: instance.lbft.primaryID,
@@ -331,8 +338,6 @@ func (instance *lbftCore) handlePrepare(prepare *Prepare) {
 	instance.prepareVote.Add(prepare.ReplicaID, prepare)
 	log.Infof("Replica %s received prepare message from %s for consensus %s, voted %d", instance.lbft.options.ID, prepare.ReplicaID, prepare.Name, instance.prepareVote.Size())
 	if instance.isPassPrepare == false && instance.maybePreparePass() {
-		instance.deltaTime[2] = time.Since(instance.startTime)
-
 		commit := &Commit{
 			Name:      instance.name,
 			PrimaryID: instance.lbft.primaryID,
@@ -373,7 +378,6 @@ func (instance *lbftCore) handleCommit(commit *Commit) {
 	log.Infof("Replica %s received commit message from %s for consensus %s, voted %d", instance.lbft.options.ID, commit.ReplicaID, commit.Name, instance.commitVote.Size())
 
 	if instance.isPassCommit == false && instance.maybeCommitPass() {
-		instance.deltaTime[3] = time.Since(instance.startTime)
 		go func(instance *lbftCore) {
 			if instance.isRunnig {
 				instance.commitAsync.wait(instance.seqNo, func() {
@@ -385,7 +389,8 @@ func (instance *lbftCore) handleCommit(commit *Commit) {
 						SeqNo:        instance.seqNo,
 						RequestBatch: instance.requestBatch,
 					}
-					instance.lbft.lbftCoreCommittedChan <- ctt
+					//instance.lbft.lbftCoreCommittedChan <- ctt
+					instance.lbft.recvConsensusMsgChan <- &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)}
 					instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)})
 				})
 			}

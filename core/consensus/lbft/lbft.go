@@ -47,7 +47,6 @@ func NewLbft(options *Options, stack consensus.IStack) *Lbft {
 		options:  options,
 		stack:    stack,
 		committedRequestBatch: make(map[uint64]*RequestBatch),
-		lbftCoreChan:          make(chan string, options.BufferSize),
 		lbftCoreCommittedChan: make(chan *Committed, options.BufferSize),
 		lbftCores:             make(map[string]*lbftCore),
 		voteViewChange:        vote.NewVote(),
@@ -115,7 +114,6 @@ type Lbft struct {
 	rwCommittedRequestBatch sync.RWMutex
 	lbftCores               map[string]*lbftCore
 	rwlbftCores             sync.RWMutex
-	lbftCoreChan            chan string
 	lbftCoreCommittedChan   chan *Committed
 	voteViewChange          *vote.Vote
 	voteCommitted           map[string]*vote.Vote
@@ -235,6 +233,13 @@ func (lbft *Lbft) RecvConsensus(payload []byte) {
 		log.Errorf("Replica %s receive consensus message : unkown %v", lbft.options.ID, err)
 		return
 	}
+	if pprep := msg.GetPrePrepare(); pprep != nil {
+		log.Debugf("Replica %s core consenter %s received preprepare message from %s --- p2p", lbft.options.ID, pprep.Name, pprep.ReplicaID)
+	} else if prep := msg.GetPrepare(); prep != nil {
+		log.Debugf("Replica %s core consenter %s received prepare message from %s --- p2p", lbft.options.ID, prep.Name, prep.ReplicaID)
+	} else if cmt := msg.GetCommit(); cmt != nil {
+		log.Debugf("Replica %s core consenter %s received commit message from %s --- p2p", lbft.options.ID, cmt.Name, cmt.ReplicaID)
+	}
 	//log.Debugf("Replica %s receive broadcast consensus message %s(%s)", lbft.options.ID, msg.info(), hash(msg))
 	lbft.recvConsensusMsgChan <- msg
 }
@@ -260,8 +265,6 @@ func (lbft *Lbft) handleCommittedRequestBatch() {
 		select {
 		case <-lbft.exit:
 			return
-		case name := <-lbft.lbftCoreChan:
-			lbft.removeInstance(name)
 		case committed := <-lbft.lbftCoreCommittedChan:
 			lbft.addCommittedReqeustBatch(committed.SeqNo, committed.RequestBatch)
 		case ctt := <-lbft.committedRequestBatchChan:
@@ -525,6 +528,7 @@ func (lbft *Lbft) handleConsensusMsg() {
 				}
 			case MESSAGEPREPREPARE:
 				if preprepare := msg.GetPrePrepare(); preprepare != nil {
+					log.Debugf("Replica %s core consenter %s received preprepare message from %s --- lbft", lbft.options.ID, preprepare.Name, preprepare.ReplicaID)
 					if !lbft.hasPrimary() {
 						log.Errorf("Replica %s received prePrepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.PrimaryID, lbft.primaryID)
 					} else if preprepare.Chain != lbft.options.Chain || preprepare.ReplicaID != preprepare.PrimaryID {
@@ -539,6 +543,7 @@ func (lbft *Lbft) handleConsensusMsg() {
 				}
 			case MESSAGEPREPARE:
 				if prepare := msg.GetPrepare(); prepare != nil {
+					log.Debugf("Replica %s core consenter %s received prepare message from %s --- lbft", lbft.options.ID, prepare.Name, prepare.ReplicaID)
 					if !lbft.hasPrimary() {
 						log.Errorf("Replica %s received prepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.PrimaryID, lbft.primaryID)
 					} else if prepare.Chain == lbft.options.Chain && prepare.PrimaryID != lbft.primaryID {
@@ -551,6 +556,7 @@ func (lbft *Lbft) handleConsensusMsg() {
 				}
 			case MESSAGECOMMIT:
 				if commit := msg.GetCommit(); commit != nil {
+					log.Debugf("Replica %s core consenter %s received commit message from %s --- lbft", lbft.options.ID, commit.Name, commit.ReplicaID)
 					// if !lbft.hasPrimary() {
 					// 	log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
 					// } else if commit.Chain == lbft.options.Chain && commit.PrimaryID != lbft.primaryID {
@@ -591,7 +597,7 @@ func (lbft *Lbft) handleConsensusMsg() {
 							}
 							lbft.broadcast(lbft.options.Chain, &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)})
 						} else {
-							log.Warnf("Replica %s received fetch committed message from %s : ignore missing seqno ", lbft.options.ID, committed.ReplicaID)
+							log.Warnf("Replica %s received fetch committed message from %s : ignore missing seqno %d", lbft.options.ID, committed.ReplicaID, committed.SeqNo)
 						}
 					}
 				}
@@ -672,6 +678,9 @@ func (lbft *Lbft) sendViewChange(vc *ViewChange) {
 	if vc != nil && vc.ReplicaID != lbft.options.ID {
 		vc.Chain = lbft.options.Chain
 		vc.ReplicaID = lbft.options.ID
+		if vc.PrimaryID == lbft.options.ID {
+			vc.H = lbft.lastSeqNum()
+		}
 	} else {
 		lbft.updateLastSeqNo(lbft.stack.GetLastSeqNo())
 		vc = &ViewChange{
@@ -698,14 +707,16 @@ func (lbft *Lbft) recvViewChange(vc *ViewChange) {
 	}
 
 	lbft.voteViewChange.Add(vc.ReplicaID, vc)
-	if vc.PrimaryID == vc.ReplicaID {
-		lbft.voteViewChange.IterVoter(func(voter string, ticket vote.ITicket) {
-			tvc := ticket.(*ViewChange)
-			if tvc.PrimaryID == vc.ReplicaID {
+	lbft.voteViewChange.IterVoter(func(voter string, ticket vote.ITicket) {
+		tvc := ticket.(*ViewChange)
+		if tvc.PrimaryID == vc.PrimaryID {
+			if tvc.H < vc.H {
 				tvc.H = vc.H
+			} else {
+				vc.H = tvc.H
 			}
-		})
-	}
+		}
+	})
 
 	cnt := lbft.voteViewChange.Size()
 	log.Infof("Replica %s received view change message from %s for voter %s , vote size %d", lbft.options.ID, vc.ReplicaID, vc.PrimaryID, cnt)
@@ -714,6 +725,15 @@ func (lbft *Lbft) recvViewChange(vc *ViewChange) {
 	} else if cnt == lbft.intersectionQuorum() {
 		lbft.lastPrimaryID = lbft.primaryID
 		lbft.primaryID = ""
+		lbft.blockTimer.Stop()
+		lbft.iterInstance(func(key string, instance *lbftCore) {
+			//if !instance.isPassCommit {
+			delete(lbft.lbftCores, key)
+			instance.stop()
+			// } else {
+			// 	log.Debugf("Replica %s alreay commmit for consensus %s, view change", lbft.options.ID, instance.name)
+			//}
+		})
 		log.Infof("Replica %s start to vote new PrimaryID, view change", lbft.options.ID)
 		lbft.viewChangeTimer.Stop()
 		//lbft.resetViewChangePeriodTimer()
@@ -743,17 +763,13 @@ func (lbft *Lbft) newView(vc *ViewChange) {
 	lbft.verifySeqNo = vc.H
 	lbft.updateExecSeqNo(vc.H)
 	lbft.iterInstance(func(key string, instance *lbftCore) {
-		if !instance.isPassCommit {
-			delete(lbft.lbftCores, key)
-			instance.stop()
-		} else {
-			log.Debugf("Replica %s alreay commmit for consensus %s, view change", lbft.options.ID, instance.name)
-		}
+		//if !instance.isPassCommit {
+		delete(lbft.lbftCores, key)
+		instance.stop()
+		// } else {
+		// 	log.Debugf("Replica %s alreay commmit for consensus %s, view change", lbft.options.ID, instance.name)
+		// }
 	})
-	for len(lbft.lbftCoreChan) > 0 {
-		name := <-lbft.lbftCoreChan
-		lbft.removeInstance(name)
-	}
 	lbft.prePrepareAsync = newAsyncSeqNo(vc.H)
 	lbft.commitAsync = newAsyncSeqNo(vc.H)
 	lbft.resetViewChangePeriodTimer()
@@ -764,9 +780,9 @@ func (lbft *Lbft) newView(vc *ViewChange) {
 			committed := <-lbft.lbftCoreCommittedChan
 			lbft.addCommittedReqeustBatch(committed.SeqNo, committed.RequestBatch)
 		}
-		lbft.resetBlockTimer()
 		lbft.resetEmptyBlockTimer()
 	}
+	lbft.resetBlockTimer()
 }
 
 func (lbft *Lbft) recvCommitted(ct *Committed) {
@@ -859,7 +875,7 @@ func (lbft *Lbft) checkpoint() {
 			lbft.committedRequestBatchChan <- &committedRequestBatch{requestBatch: reqBatch, seqNo: height}
 			delete(lbft.committedRequestBatch, seqNo-uint64(lbft.options.K))
 			checkpoint = lbft.execSeqNum() + 1
-		} else if seqNo-checkpoint > uint64(lbft.options.K) {
+		} else /*if seqNo-checkpoint > uint64(lbft.options.K)*/ {
 			log.Warnf("Replica %s fetch committed %d ", lbft.options.ID, checkpoint)
 			fc := &FetchCommitted{
 				ReplicaID: lbft.options.ID,

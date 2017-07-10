@@ -21,16 +21,19 @@ package rpc
 import (
 	"errors"
 	"math/big"
+	"time"
 
 	"github.com/bocheninc/L0/components/crypto"
 	"github.com/bocheninc/L0/components/utils"
 	"github.com/bocheninc/L0/core/accounts"
 	"github.com/bocheninc/L0/core/coordinate"
+	"github.com/bocheninc/L0/core/params"
 	"github.com/bocheninc/L0/core/types"
 )
 
 type IBroadcast interface {
 	Relay(inv types.IInventory)
+	QueryContract(tx *types.Transaction) ([]byte, error)
 }
 
 type Transaction struct {
@@ -44,6 +47,11 @@ type TransactionCreateArgs struct {
 	Amount    int64
 	Fee       int64
 	TxType    uint32
+}
+
+type ContractQueryArgs struct {
+	ContractAddr   string
+	ContractParams []string
 }
 
 func NewTransaction(pmHandler IBroadcast) *Transaction {
@@ -78,7 +86,7 @@ func (t *Transaction) Broadcast(txHex string, reply *crypto.Hash) error {
 		return errors.New("Invalid Amount in Tx, Amount must be >0")
 	}
 
-	if tx.Fee() == nil || tx.Fee().Sign() <= 0 {
+	if tx.Fee() == nil || tx.Fee().Sign() < 0 {
 		return errors.New("Invalid Fee in Tx, Fee must be >0")
 	}
 
@@ -90,4 +98,42 @@ func (t *Transaction) Broadcast(txHex string, reply *crypto.Hash) error {
 	t.pmHander.Relay(tx)
 	*reply = tx.Hash()
 	return nil
+}
+
+//Query contract query
+func (t *Transaction) Query(args *ContractQueryArgs, reply *string) error {
+	if args.ContractAddr[0:2] == "0x" {
+		args.ContractAddr = args.ContractAddr[2:]
+	}
+	contractAddress := utils.HexToBytes(args.ContractAddr)
+	if len(contractAddress) != 20 && len(contractAddress) != 22 {
+		return errors.New("contract address is illegal")
+	}
+
+	contractSpec := new(types.ContractSpec)
+	contractSpec.ContractCode = []byte("")
+	contractSpec.ContractAddr = contractAddress
+	contractSpec.ContractParams = args.ContractParams
+	tx := types.NewTransaction(
+		coordinate.NewChainCoordinate(params.ChainID),
+		coordinate.NewChainCoordinate(params.ChainID),
+		types.TypeContractQuery,
+		uint32(0),
+		accounts.Address{},
+		accounts.NewAddress(contractSpec.ContractAddr),
+		big.NewInt(0),
+		big.NewInt(0),
+		uint32(time.Now().Unix()),
+	)
+	tx.Payload = utils.Serialize(contractSpec)
+
+	result, err := t.pmHander.QueryContract(tx)
+	if err != nil {
+		return err
+	}
+
+	*reply = string(result)
+
+	return nil
+
 }

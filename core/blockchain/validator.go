@@ -139,8 +139,12 @@ func (va *validatorAccount) addTransaction(tx *types.Transaction) bool {
 		if nonce != tx.Nonce() || amount.Sign() < 0 {
 			isOK = false
 		}
-	case types.TypeSmartContract:
-		//TODO
+	case types.TypeContractInit:
+	//TODO
+	case types.TypeContractInvoke:
+	//TODO
+	case types.TypeContractQuery:
+	//TODO
 	default:
 		log.Errorf("add: unknow tx's type, tx_hash: %v, tx_type: %v", tx.Hash().String(), tx.GetType())
 	}
