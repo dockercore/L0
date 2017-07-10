@@ -180,7 +180,7 @@ func (bc *Blockchain) StartConsensusService() {
 
 				log.Debugf("Get CommitedTxs Number: %d", len(commitedTxs.Transactions))
 				for _, tx := range commitedTxs.Transactions {
-					txs = append(txs, tx.(*types.Transaction))
+					txs = append(txs, tx)
 				}
 				if txs != nil && len(txs) > 0 {
 					blk := bc.GenerateBlock(txs, uint32(commitedTxs.Time))

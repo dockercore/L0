@@ -157,6 +157,10 @@ func (cfg *Config) read() string {
 		cfg.ProfPort = profPort
 	}
 
+	if profPort = viper.GetString("blockchain.profPort"); profPort != "" {
+		cfg.ProfPort = profPort
+	}
+
 	if cpuFile = viper.GetString("blockchain.cpuprofile"); cpuFile != "" {
 		cfg.CPUFile = cpuFile
 	}

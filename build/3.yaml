@@ -17,6 +17,7 @@ jrpc:
 blockchain:
   id: "00"
   datadir: "datadir/3"
+  cpuprofile: "profile/prof_node3"
   profPort: "6063"
 
 issueaddr:
@@ -46,4 +47,3 @@ consensus:
     bufferSize: 100    
     maxConcurrentNumFrom: 10
     maxConcurrentNumTo: 10
-

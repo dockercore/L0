@@ -19,7 +19,6 @@
 package blockchain
 
 import (
-	"github.com/bocheninc/L0/core/consensus"
 	"github.com/bocheninc/L0/core/types"
 )
 
@@ -27,25 +26,9 @@ import (
 // 	New: func() interface{} { return &types.Transaction{} },
 // }
 
-// NewTransaction To do
-func (bc *Blockchain) NewTransaction() consensus.ITransaction {
-	//return TxBufferPool.Get().(*types.Transaction)
-	return &types.Transaction{}
-}
-
-// VerifyTxsInConsensus verify
-func (bc *Blockchain) VerifyTxsInConsensus(txs []consensus.ITransaction, primary bool) []consensus.ITransaction {
-	ntxs := types.Transactions{}
-	for _, tx := range txs {
-		ntxs = append(ntxs, tx.(*types.Transaction))
-	}
-	ntxs = bc.txValidator.VerifyTxsInConsensus(ntxs, primary)
-	rtxs := []consensus.ITransaction{}
-	for _, tx := range ntxs {
-		rtxs = append(rtxs, tx)
-	}
-
-	return rtxs
+//VerifyTxsInConsensus verify
+func (bc *Blockchain) VerifyTxsInConsensus(txs []*types.Transaction, primary bool) []*types.Transaction {
+	return bc.txValidator.VerifyTxsInConsensus(txs, primary)
 }
 
 // GetLastSeqNo To do
@@ -53,25 +36,23 @@ func (bc *Blockchain) GetLastSeqNo() uint64 {
 	return 0
 }
 
-func (bc *Blockchain) IterTransaction(function func(consensus.ITransaction) bool) {
+func (bc *Blockchain) IterTransaction(function func(*types.Transaction) bool) {
 	// bc.txPoolValidator.IterTransaction(func(tx *types.Transaction) bool {
 	// 	return function(tx)
 	// })
-	bc.txValidator.IterElementInTxPool(func(tx *types.Transaction) bool {
-		return function(tx)
-	})
+	bc.txValidator.IterElementInTxPool(function)
 }
 
-func (bc *Blockchain) Removes(txs []consensus.ITransaction) {
-	ntxs := types.Transactions{}
-	for _, tx := range txs {
-		ntxs = append(ntxs, tx.(*types.Transaction))
-	}
+func (bc *Blockchain) Removes(txs []*types.Transaction) {
 	//bc.txPoolValidator.Removes(ntxs)
-	bc.txValidator.RemoveTxInVerify(ntxs)
+	bc.txValidator.RemoveTxInVerify(txs)
 }
 
 func (bc *Blockchain) Len() int {
 	//return bc.txPoolValidator.TxsLen()
 	return bc.txValidator.TxsLenInTxPool()
+}
+
+func (bc *Blockchain) GetGroupingTxs(maxSize, maxGroup uint64) [][]*types.Transaction {
+	return nil
 }

@@ -101,7 +101,6 @@ func NewLcnd(cfgFile string) *Lcnd {
 
 // Start starts the blockchain service
 func (l *Lcnd) Start() {
-
 	go func() {
 		err := http.ListenAndServe(":"+l.Config.ProfPort, nil)
 		if err != nil {

@@ -17,6 +17,8 @@ jrpc:
 blockchain:
   id: "00"
   datadir: "datadir/1"
+  cpuprofile: "profile/prof_node1"
+
   profPort: "6061"
 
 issueaddr:
