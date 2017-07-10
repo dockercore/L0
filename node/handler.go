@@ -46,20 +46,14 @@ import (
 // ProtocolManager manages the protocol
 type ProtocolManager struct {
 	*blockchain.Blockchain
-	consenter consensus.Consenter
-	// msg-net
-
+	consenter  consensus.Consenter
 	statusData StatusData
-
-	peers []*peer
-	// syncer
-	msgnet msgnet.Stack
-	merger *merge.Helper
-
+	peers      []*peer
+	msgnet     msgnet.Stack
+	merger     *merge.Helper
 	*ledger.Ledger
 	*keystore.KeyStore
 	*p2p.Server
-
 	msgCh chan *p2p.Msg
 }
 
@@ -131,7 +125,7 @@ func (pm *ProtocolManager) handle(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 	if msg.Cmd == statusMsg {
 		pm.OnStatus(msg, p)
 	} else {
-		return err
+		return fmt.Errorf("handshake error")
 	}
 
 	return pm.handleMsg(p, rw)
@@ -140,23 +134,23 @@ func (pm *ProtocolManager) handle(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 func (pm *ProtocolManager) handleMsg(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 	for {
 		m, err := rw.ReadMsg()
-		log.Debugf("ProtocolManager handle message %s", msgMap[m.Cmd])
+		//log.Debugf("ProtocolManager handle message %s", msgMap[m.Cmd])
 		if err != nil {
 			return err
 		}
 		switch m.Cmd {
 		case statusMsg:
 			return fmt.Errorf("should not appear status message")
-		// case getBlocksMsg:
-		// 	pm.OnGetBlocks(m, p)
-		// case invMsg:
-		// 	pm.OnInv(m, p)
+		case getBlocksMsg:
+			pm.OnGetBlocks(m, p)
+		case invMsg:
+			pm.OnInv(m, p)
 		case txMsg:
 			pm.OnTx(m, p)
-		// case blockMsg:
-		// 	pm.OnBlock(m, p)
-		// case getdataMsg:
-		// 	pm.OnGetData(m, p)
+		case blockMsg:
+			pm.OnBlock(m, p)
+		case getdataMsg:
+			pm.OnGetData(m, p)
 		case consensusMsg:
 			pm.OnConsensus(m, p)
 		case broadcastAckMergeTxsMsg:
@@ -168,7 +162,12 @@ func (pm *ProtocolManager) handleMsg(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 }
 
 func (pm *ProtocolManager) handleShake(rw p2p.MsgReadWriter) {
-	rw.WriteMsg(*p2p.NewMsg(statusMsg, utils.Serialize(pm.statusData)))
+	status := &StatusData{
+		StartHeight: pm.Blockchain.CurrentHeight(),
+		Version:     params.VersionMajor,
+	}
+
+	rw.WriteMsg(*p2p.NewMsg(statusMsg, utils.Serialize(status)))
 }
 
 // Relay relays inventory to remote peers
@@ -215,7 +214,7 @@ func (pm *ProtocolManager) consensusReadLoop() {
 		case consensusData := <-pm.consenter.BroadcastConsensusChannel():
 			to := consensusData.To()
 			if bytes.Equal(coordinate.HexToChainCoordinate(to), params.ChainID) {
-				log.Debugf("Broadcast Consensus Message from %v to %v", params.ChainID, coordinate.HexToChainCoordinate(to))
+				//log.Debugf("Broadcast Consensus Message from %v to %v", params.ChainID, coordinate.HexToChainCoordinate(to))
 				pm.msgCh <- p2p.NewMsg(consensusMsg, consensusData.Payload())
 			} else {
 				// broadcast message to msg-net
@@ -243,33 +242,36 @@ func (pm *ProtocolManager) broadcastLoop() {
 
 // OnStatus handles statusMsg
 func (pm *ProtocolManager) OnStatus(m p2p.Msg, p *p2p.Peer) {
-	// swich status with remote peer
+	// switch status with remote peer
 	// add status to peer instance
-	// if local peer startheight behind remote, start sync
+	// if local peer start height behind remote, start sync
 	statusData := StatusData{}
 	utils.Deserialize(m.Payload, &statusData)
 	peer := newPeer(p, statusData)
 	pm.peers = append(pm.peers, peer)
-	log.Debugf("Status Msg %d %d", pm.statusData.StartHeight, peer.Status.StartHeight)
+	log.Debugf("Status Msg local height= %d    remote height = %d", pm.statusData.StartHeight, peer.Status.StartHeight)
 	if pm.statusData.StartHeight < peer.Status.StartHeight {
-		// getBlocks := GetBlocks{
-		// 	Version:       pm.statusData.Version,
-		// 	LocatorHashes: []crypto.Hash{pm.Blockchain.CurrentBlockHash()},
-		// 	HashStop:      crypto.Hash{},
-		// }
-		// p2p.SendMessage(p.Conn, p2p.NewMsg(getBlocksMsg, utils.Serialize(getBlocks)))
+		getBlocks := GetBlocks{
+			Version:       pm.statusData.Version,
+			LocatorHashes: []crypto.Hash{pm.Blockchain.CurrentBlockHash()},
+			HashStop:      crypto.Hash{},
+		}
+		p2p.SendMessage(p.Conn, p2p.NewMsg(getBlocksMsg, utils.Serialize(getBlocks)))
 	}
 }
 
 // OnTx processes tx message
 func (pm *ProtocolManager) OnTx(m p2p.Msg, p *p2p.Peer) {
-	//TODO: broadcast after validation
+
+	if p.AddFilter(m.Payload) {
+		//log.Debug("tx already in bloom filter")
+		return
+	}
 	tx := new(types.Transaction)
 	tx.Deserialize(m.Payload)
-	// p.AddFilter(m.CheckSum[:])
-	log.Debugf("Tx Msg %s", tx.Hash())
+
 	if pm.Blockchain.ProcessTransaction(tx) {
-		// pm.msgCh <- &m
+		pm.msgCh <- &m
 	}
 }
 
@@ -283,10 +285,15 @@ func (pm *ProtocolManager) OnGetBlocks(m p2p.Msg, peer *p2p.Peer) {
 		err       error
 	)
 
-	utils.Deserialize(m.Payload, getblocks)
-	//
+	err = utils.Deserialize(m.Payload, &getblocks)
+	if err != nil {
+		log.Errorf("GetBlocks Msg Deserialize error %v", err)
+		return
+	}
+	//TODO
 	for _, h := range getblocks.LocatorHashes {
 		// validate locator
+		log.Debugf("OnGetBlocks hash %s", h)
 		hash = h
 	}
 
@@ -310,14 +317,17 @@ func (pm *ProtocolManager) OnGetBlocks(m p2p.Msg, peer *p2p.Peer) {
 
 // OnBlock processes block message
 func (pm *ProtocolManager) OnBlock(m p2p.Msg, p *p2p.Peer) {
-	//TODO: broadcast after validation
 	blk := new(types.Block)
 	blk.Deserialize(m.Payload)
 	log.Debugf("Block Msg %s", blk.Hash())
-	// p.AddFilter(m.CheckSum[:])
+
+	if p.AddFilter(m.Payload) {
+		return
+	}
+
 	if pm.Blockchain.ProcessBlock(blk) {
 		pm.statusData.StartHeight++
-		// pm.msgCh <- p2p.NewMsg(invMsg, blk.Hash().Bytes())
+		pm.msgCh <- p2p.NewMsg(invMsg, blk.Hash().Bytes())
 	}
 }
 
@@ -334,7 +344,7 @@ func (pm *ProtocolManager) OnInv(m p2p.Msg, peer *p2p.Peer) {
 
 	switch inventory.Type {
 	case InvTypeTx:
-		// log.Debugf("Inv Tx %v", inventory.Hashes)
+		log.Debugf("Inv Tx %v", inventory.Hashes)
 		for _, h := range inventory.Hashes {
 			if tx, _ := pm.GetTransaction(h); tx == nil {
 				hashes = append(hashes, h)
@@ -342,19 +352,19 @@ func (pm *ProtocolManager) OnInv(m p2p.Msg, peer *p2p.Peer) {
 		}
 
 		getdata.InvList = []InvVect{
-			InvVect{
+			{
 				Type: InvTypeTx,
 			},
 		}
 	case InvTypeBlock:
-		// log.Debugf("Inv Block %v", inventory.Hashes)
+		log.Debugf("Inv Block %v", inventory.Hashes)
 		for _, h := range inventory.Hashes {
 			if block, _ := pm.GetBlockByHash(h.Bytes()); block == nil {
 				hashes = append(hashes, h)
 			}
 		}
 		getdata.InvList = []InvVect{
-			InvVect{
+			{
 				Type: InvTypeBlock,
 			},
 		}
@@ -380,7 +390,18 @@ func (pm *ProtocolManager) OnGetData(m p2p.Msg, peer *p2p.Peer) {
 		switch inventory.Type {
 		case InvTypeBlock:
 			for _, h := range inventory.Hashes {
-				if block, _ := pm.GetBlockByHash(h.Bytes()); block != nil {
+				if blockHead, _ := pm.GetBlockByHash(h.Bytes()); blockHead != nil {
+					var (
+						block types.Block
+						err   error
+					)
+					block.Transactions, err = pm.GetTxsByBlockNumber(blockHead.Height, 100)
+					if err != nil {
+						log.Debugf("GetTxsByBlockNumber error, %s", block.Hash())
+						return
+					}
+					block.Header = blockHead
+
 					log.Debugf("GetBlock from local, %s", block.Hash())
 					msg := p2p.NewMsg(blockMsg, block.Serialize())
 					p2p.SendMessage(peer.Conn, msg)
@@ -400,7 +421,7 @@ func (pm *ProtocolManager) OnGetData(m p2p.Msg, peer *p2p.Peer) {
 
 // OnConsensus processes consensus message
 func (pm *ProtocolManager) OnConsensus(m p2p.Msg, peer *p2p.Peer) {
-	log.Debugf("Req receive consensus message %v", m.Cmd)
+	//log.Debugf("Req receive consensus message %v", m.Cmd)
 	pm.consenter.RecvConsensus(m.Payload) //(p.ID.String(), []byte(""), m.Payload)
 }
 

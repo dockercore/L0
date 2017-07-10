@@ -370,7 +370,7 @@ func (ledger *Ledger) executeAtomicTx(writeBatchs []*db.WriteBatch, tx *types.Tr
 	atomicTxWriteBatchs, err := ledger.state.Transfer(sender, tx.Recipient(), tx.Fee(), state.NewBalance(tx.Amount(), tx.Nonce()), types.TypeAtomic)
 	if err != nil {
 		if err == state.ErrNegativeBalance {
-			log.Errorf("execute atomic transaction: %s, err:%s\n", tx.Hash().String(), err)
+			log.Errorf("execute atomic transaction: %s, err:%s", tx.Hash().String(), err)
 			return writeBatchs, nil
 		}
 		return writeBatchs, err
@@ -387,7 +387,7 @@ func (ledger *Ledger) executeACrossChainTx(writeBatchs []*db.WriteBatch, tx *typ
 		TxWriteBatch, err := ledger.state.UpdateBalance(sender, state.NewBalance(tx.Amount(), tx.Nonce()), tx.Fee(), state.OperationSub)
 		if err != nil {
 			if err == state.ErrNegativeBalance {
-				log.Errorf("execute acrosschain transaction: %s, err:%s\n", tx.Hash().String(), err)
+				log.Errorf("execute acrosschain transaction: %s, err:%s", tx.Hash().String(), err)
 				return writeBatchs, nil
 			}
 			return writeBatchs, err
@@ -397,7 +397,7 @@ func (ledger *Ledger) executeACrossChainTx(writeBatchs []*db.WriteBatch, tx *typ
 		mergedTxWriteBatchs, err := ledger.state.UpdateBalance(tx.Recipient(), state.NewBalance(tx.Amount(), tx.Nonce()), tx.Fee(), state.OperationPlus)
 		if err != nil {
 			if err == state.ErrNegativeBalance {
-				log.Errorf("execute acrosschain transaction: %s, err:%s\n", tx.Hash().String(), err)
+				log.Errorf("execute acrosschain transaction: %s, err:%s", tx.Hash().String(), err)
 				return writeBatchs, nil
 			}
 			return writeBatchs, err
@@ -416,7 +416,7 @@ func (ledger *Ledger) executeMergedTx(writeBatchs []*db.WriteBatch, tx *types.Tr
 		TxWriteBatchs, err := ledger.state.Transfer(senderAddress, tx.Recipient(), tx.Fee(), state.NewBalance(tx.Amount(), tx.Nonce()), tx.GetType())
 		if err != nil {
 			if err == state.ErrNegativeBalance {
-				log.Errorf("execute merged transaction: %s, err:%s\n", tx.Hash().String(), err)
+				log.Errorf("execute merged transaction: %s, err:%s", tx.Hash().String(), err)
 				return writeBatchs, nil
 			}
 			return writeBatchs, err
@@ -435,7 +435,7 @@ func (ledger *Ledger) executeDistriTx(writeBatchs []*db.WriteBatch, tx *types.Tr
 		TxWriteBatch, err := ledger.state.UpdateBalance(chainAddress, state.NewBalance(tx.Amount(), uint32(0)), big.NewInt(0), state.OperationPlus)
 		if err != nil {
 			if err == state.ErrNegativeBalance {
-				log.Errorf("execute distri transaction: %s, err:%s\n", tx.Hash().String(), err)
+				log.Errorf("execute distri transaction: %s, err:%s", tx.Hash().String(), err)
 				return writeBatchs, nil
 			}
 			return writeBatchs, err
@@ -453,7 +453,7 @@ func (ledger *Ledger) executeBackfrontTx(writeBatchs []*db.WriteBatch, tx *types
 		TxWriteBatch, err := ledger.state.UpdateBalance(chainAddress, state.NewBalance(tx.Amount(), uint32(0)), big.NewInt(0), state.OperationSub)
 		if err != nil {
 			if err == state.ErrNegativeBalance {
-				log.Errorf("execute backfront transaction: %s, err:%s\n", tx.Hash().String(), err)
+				log.Errorf("execute backfront transaction: %s, err:%s", tx.Hash().String(), err)
 				return writeBatchs, nil
 			}
 			return writeBatchs, err

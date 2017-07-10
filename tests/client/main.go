@@ -18,14 +18,11 @@
 
 package main
 
-import "time"
-
 func main() {
 	defer func() {
 		if rec := recover(); rec != nil {
 			panic(rec)
 		}
 	}()
-	time.Sleep(time.Second * 10)
 	sendTx()
 }

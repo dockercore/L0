@@ -19,14 +19,15 @@
 package lcnd
 
 import (
+	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/pprof"
 	"sync"
-
-	"runtime"
-
 	"syscall"
+
+	_ "net/http/pprof"
 
 	"github.com/bocheninc/L0/components/db"
 	"github.com/bocheninc/L0/components/log"
@@ -100,6 +101,16 @@ func NewLcnd(cfgFile string) *Lcnd {
 
 // Start starts the blockchain service
 func (l *Lcnd) Start() {
+
+	go func() {
+		err := http.ListenAndServe(":"+l.Config.ProfPort, nil)
+		if err != nil {
+			log.Errorf("Prof Server start error=%v", err)
+			return
+		}
+		log.Debugf("Prof Server start on port=%s", l.Config.ProfPort)
+	}()
+
 	if l.Config.CPUFile != "" {
 		startPProf(l.Config.CPUFile, l.Config.CPUFile+".mem")
 	}

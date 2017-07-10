@@ -1,18 +1,18 @@
 // Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
 //
 // This file is part of L0
-// 
+//
 // The L0 is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // The L0 is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// 
+//
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -361,7 +361,7 @@ func (pm *peerManager) savePeers() {
 func (pm *peerManager) broadcast(msg *Msg) {
 	if msg != nil {
 		for _, peer := range pm.peers.getPeers() {
-			log.Debugf("Peer Manager broadcast message %d to peer %s", msg.Cmd, peer.Address)
+			//log.Debugf("Peer Manager broadcast message %d to peer %s", msg.Cmd, peer.Address)
 			// if msg.Cmd <= peersMsg || msg.Cmd == 23 || !peer.TestFilter(msg.CheckSum[:]) {
 			if n, err := msg.write(peer.Conn); err != nil {
 				log.Errorf("broadcast message write error %d - %v", n, err)

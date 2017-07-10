@@ -69,14 +69,14 @@ func listen(c net.Conn) {
 	for {
 		l, err := utils.ReadVarInt(c)
 		if err != nil {
-			panic(err)
+			return
 		}
 		data := make([]byte, l)
 		io.ReadFull(c, data)
 		m := new(Msg)
 		err = utils.Deserialize(data, m)
 		if err != nil {
-			panic(err)
+			return
 		}
 		go processMsg(m, c)
 	}
@@ -131,10 +131,6 @@ func sendMsg(m *Msg, c net.Conn) {
 	c.Write(data)
 }
 
-func init() {
-	// TCPSend(srvAddress)
-}
-
 // NewMsg returns a new msg
 func NewMsg(MsgType uint8, payload []byte) *Msg {
 	Msg := &Msg{
@@ -165,7 +161,11 @@ func TCPSend(srvAddress []string) {
 func Relay(m *Msg) {
 	data := utils.Serialize(*m)
 	data = append(utils.VarInt(uint64(len(data))), data...)
-	for _, c := range conn {
-		c.Write(data)
+	for n, c := range conn {
+		_, err := c.Write(data)
+		if err != nil {
+			c.Close()
+			conn = append(conn[:n], conn[n+1:]...)
+		}
 	}
 }

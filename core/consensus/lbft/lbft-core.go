@@ -111,7 +111,7 @@ func (instance *lbftCore) start() {
 				}
 				//instance.deltaTime[4] = time.Since(instance.startTime)
 				//log.Infof("lbft_core_cost_time(%s)  deltatime(%s,%s,%s,%s) txs(%d)", instance.name, instance.deltaTime[1], instance.deltaTime[2], instance.deltaTime[3], instance.deltaTime[4], len(instance.requestBatch.Requests))
-				log.Debugf("Replica %s core consenter %s stopped", instance.lbft.options.ID, instance.name)
+				//log.Debugf("Replica %s core consenter %s stopped", instance.lbft.options.ID, instance.name)
 				return
 			case msg := <-instance.msgChan:
 				switch tp := msg.Payload.(type) {
@@ -128,7 +128,7 @@ func (instance *lbftCore) start() {
 		}
 	}()
 	instance.startTime = time.Now()
-	log.Debugf("Replica %s core consenter %s started", instance.lbft.options.ID, instance.name)
+	//log.Debugf("Replica %s core consenter %s started", instance.lbft.options.ID, instance.name)
 }
 
 func (instance *lbftCore) stop() {
@@ -179,7 +179,7 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 			// }(requestBatch)
 
 			if instance.fromChain != instance.toChain {
-				log.Infof("Replica %s broadcast requestBatch message to %s  for consensus %s (%d transactions)", instance.lbft.options.ID, instance.toChain, instance.name, len(requestBatch.Requests))
+				//log.Infof("Replica %s broadcast requestBatch message to %s  for consensus %s (%d transactions)", instance.lbft.options.ID, instance.toChain, instance.name, len(requestBatch.Requests))
 				instance.lbft.broadcast(instance.toChain, &Message{Payload: &Message_RequestBatch{RequestBatch: requestBatch}})
 			}
 		}
@@ -192,7 +192,7 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 		log.Errorf("Replica %s for consensus %s failed to verify %d", instance.lbft.options.ID, instance.name, instance.seqNo)
 	}
 
-	log.Infof("Replica %s received requestBatch message for consensus %s (%d transactions) (seqNo %d)", instance.lbft.options.ID, instance.name, len(requestBatch.Requests), instance.seqNo)
+	//log.Infof("Replica %s received requestBatch message for consensus %s (%d transactions) (seqNo %d)", instance.lbft.options.ID, instance.name, len(requestBatch.Requests), instance.seqNo)
 
 	prePrepare := &PrePrepare{
 		Name:      instance.name,
@@ -204,7 +204,7 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 		// Quorum:    uint64(instance.lbft.intersectionQuorum()),
 		Requests: requestBatch,
 	}
-	log.Infof("Replica %s send prePrepare message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(requestBatch.Requests))
+	//log.Infof("Replica %s send prePrepare message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(requestBatch.Requests))
 	instance.handlePrePrepare(prePrepare)
 	instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Payload: &Message_PrePrepare{PrePrepare: prePrepare}})
 
@@ -240,13 +240,13 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 		}
 		var verify bool
 		instance.lbft.prePrepareAsync.wait(instance.seqNo, func() {
-			log.Debugf("Replica %s handle preprepare for consensus %s : seqNo %d (async preprepare)", instance.lbft.options.ID, instance.name, instance.seqNo)
+			//log.Debugf("Replica %s handle preprepare for consensus %s : seqNo %d (async preprepare)", instance.lbft.options.ID, instance.name, instance.seqNo)
 			instance.waitForVerify()
 			if requestBatch.Id != EMPTYBLOCK && instance.lbft.options.Chain == fromChain && instance.seqNo > instance.lbft.seqNum() {
 				//instance.lbft.stack.Removes(instance.lbft.toTxs(requestBatch))
-				t := time.Now()
+				//t := time.Now()
 				txs := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), false)
-				log.Debugf("Replica %s VerifyTxsInConsensus elapsed %s for consensus %s(%d)", instance.lbft.options.ID, time.Now().Sub(t), instance.name, instance.seqNo)
+				//log.Debugf("Replica %s VerifyTxsInConsensus elapsed %s for consensus %s(%d)", instance.lbft.options.ID, time.Now().Sub(t), instance.name, instance.seqNo)
 				trequestBatch := instance.lbft.toRequestBatch(txs)
 				trequestBatch.Id = requestBatch.Id
 				trequestBatch.Time = requestBatch.Time
@@ -280,7 +280,7 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 		}
 	}
 
-	log.Infof("Replica %s received prePrepare message from %s for consensus %s (%d transactions)", instance.lbft.options.ID, preprep.ReplicaID, instance.name, len(requestBatch.Requests))
+	//log.Infof("Replica %s received prePrepare message from %s for consensus %s (%d transactions)", instance.lbft.options.ID, preprep.ReplicaID, instance.name, len(requestBatch.Requests))
 
 	instance.requestBatch = requestBatch
 	// instance.fromChain = fromChain
@@ -298,7 +298,7 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 		Digest:    instance.digest,
 		Quorum:    uint64(instance.lbft.intersectionQuorum()),
 	}
-	log.Infof("Replica %s send prepare message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
+	//log.Infof("Replica %s send prepare message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
 	instance.handlePrepare(prepare)
 	instance.broadcast(&Message{Payload: &Message_Prepare{Prepare: prepare}})
 }
@@ -325,7 +325,7 @@ func (instance *lbftCore) handlePrepare(prepare *Prepare) {
 	}
 
 	instance.prepareVote.Add(prepare.ReplicaID, prepare)
-	log.Infof("Replica %s received prepare message from %s for consensus %s, voted %d", instance.lbft.options.ID, prepare.ReplicaID, prepare.Name, instance.prepareVote.Size())
+	//log.Infof("Replica %s received prepare message from %s for consensus %s, voted %d", instance.lbft.options.ID, prepare.ReplicaID, prepare.Name, instance.prepareVote.Size())
 	if instance.isPassPrepare == false && instance.maybePreparePass() {
 		instance.deltaTime[2] = time.Since(instance.startTime)
 
@@ -338,7 +338,7 @@ func (instance *lbftCore) handlePrepare(prepare *Prepare) {
 			Digest:    instance.digest,
 			Quorum:    uint64(instance.lbft.intersectionQuorum()),
 		}
-		log.Infof("Replica %s send commit message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
+		//log.Infof("Replica %s send commit message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
 		instance.handleCommit(commit)
 		instance.broadcast(&Message{Payload: &Message_Commit{Commit: commit}})
 	}
@@ -366,12 +366,12 @@ func (instance *lbftCore) handleCommit(commit *Commit) {
 	}
 
 	instance.commitVote.Add(commit.ReplicaID, commit)
-	log.Infof("Replica %s received commit message from %s for consensus %s, voted %d", instance.lbft.options.ID, commit.ReplicaID, commit.Name, instance.commitVote.Size())
+	//log.Infof("Replica %s received commit message from %s for consensus %s, voted %d", instance.lbft.options.ID, commit.ReplicaID, commit.Name, instance.commitVote.Size())
 
 	if instance.isPassCommit == false && instance.maybeCommitPass() {
 		instance.deltaTime[3] = time.Since(instance.startTime)
 		instance.lbft.commitAsync.wait(instance.seqNo, func() {
-			log.Infof("Replica %s succeed to commit for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
+			//log.Infof("Replica %s succeed to commit for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
 			ctt := &Committed{
 				Name:         instance.name,
 				Chain:        instance.lbft.options.Chain,

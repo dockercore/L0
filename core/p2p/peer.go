@@ -1,18 +1,18 @@
 // Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
 //
 // This file is part of L0
-// 
+//
 // The L0 is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // The L0 is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// 
+//
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -38,8 +38,8 @@ import (
 var (
 	scheme             = "encode"
 	delimiter          = "&"
-	filterN       uint = 100000
-	falsePositive      = 0.0001
+	filterN       uint = 10000000
+	falsePositive      = 0.00001
 )
 
 // PeerID represents the peer identity
@@ -171,15 +171,15 @@ func (peer *Peer) String() string {
 	return u.String()
 }
 
-// AddFilter adds data to bloomfilter
-func (peer *Peer) AddFilter(data []byte) {
-	peer.filter.Add(data)
+// AddFilter adds data to bloom filter
+func (peer *Peer) AddFilter(data []byte) bool {
+	return peer.filter.TestAndAdd(data)
 }
 
 // TestFilter tests data
-func (peer *Peer) TestFilter(data []byte) bool {
-	return peer.filter.Test(data)
-}
+//func (peer *Peer) TestFilter(data []byte) bool {
+//	return peer.filter.Test(data)
+//}
 
 // GetPeerAddress returns local peer address info
 func (peer *Peer) GetPeerAddress() string {
@@ -205,6 +205,14 @@ func (peer *Peer) getProto(cmd uint8) *protoRW {
 
 func (peer *Peer) run() {
 	//TODO: refactor this
+
+	go func() {
+		for {
+			<-time.NewTicker(time.Minute).C
+			peer.filter.ClearAll()
+		}
+	}()
+
 	conn := peer.Conn
 	peerManager := getPeerManager()
 	for {
@@ -214,12 +222,6 @@ func (peer *Peer) run() {
 			peerManager.delPeer <- conn
 			break
 		}
-		//TODO: refactor this to synchronous
-		// doHandshake -> doHandleshakeAck after this ... allow [ping, pong, peers, getpeers]
-		if msgCmd, ok := msgMap[m.Cmd]; ok {
-			log.Debugf("handle message %s, server address:%s", msgCmd, peer.Address)
-		}
-		// Update the ActiveTime when message reached
 		peerManager.alivePeer <- conn
 
 		switch m.Cmd {
@@ -233,10 +235,7 @@ func (peer *Peer) run() {
 		case getPeersMsg:
 			peer.onGetPeers(m, conn, peerManager)
 		default:
-			// TODO: refactor this
-			if p := peerManager.GetPeer(conn); p != nil || true {
-				// pp, ok := pm.peers.get(conn)
-				// log.Debugf("connection %v, peer %v, message- %v, peers:%v, peer: %v, ok: %v", conn, p, m.Cmd, pm.peers, pp, ok)
+			if p := peerManager.GetPeer(conn); p != nil {
 				proto := p.getProto(m.Cmd)
 				if proto != nil {
 					proto.in <- *m

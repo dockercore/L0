@@ -325,7 +325,7 @@ func (lbft *Lbft) writeBlock() {
 			}
 		}
 	}
-	log.Infof("Replica %s write block %v (%d transactions) ", lbft.options.ID, seqNos, len(txs))
+	//log.Infof("Replica %s write block %v (%d transactions) ", lbft.options.ID, seqNos, len(txs))
 	lbft.committedTxsChan <- &consensus.CommittedTxs{Time: nano, Transactions: txs, SeqNos: seqNos}
 	lbft.committedBlock = nil
 }
@@ -336,18 +336,18 @@ func (lbft *Lbft) handleTransaction() {
 		case <-lbft.exit:
 			return
 		case <-lbft.viewChangeTimer.C:
-			log.Debugf("Replica %s view change timeout", lbft.options.ID)
+			//log.Debugf("Replica %s view change timeout", lbft.options.ID)
 			lbft.voteViewChange.Clear()
 		case <-lbft.resendViewChangeTimer.C:
 			lbft.votedCnt++
 			if lbft.votedCnt > lbft.options.K*lbft.options.N {
 				lbft.voteViewChange.IterVoter(func(voter string, ticket vote.ITicket) {
-					tvc := ticket.(*ViewChange)
-					log.Infof("Replica %s received view change message from %s for voter %s , lastSeqNo %d", lbft.options.ID, tvc.ReplicaID, tvc.PrimaryID, tvc.H)
+					//tvc := ticket.(*ViewChange)
+					//log.Infof("Replica %s received view change message from %s for voter %s , lastSeqNo %d", lbft.options.ID, tvc.ReplicaID, tvc.PrimaryID, tvc.H)
 				})
 				log.Panicf("Replica %s failed to vote new Primary, diff lastSeqNo  %d", lbft.options.ID, lbft.lastSeqNum())
 			}
-			log.Debugf("Replica %s resend view change %s", lbft.options.ID, time.Now())
+			//log.Debugf("Replica %s resend view change %s", lbft.options.ID, time.Now())
 			var vc *ViewChange
 			lbft.voteViewChange.IterVoter(func(voter string, ticket vote.ITicket) {
 				tvc := ticket.(*ViewChange)
@@ -508,7 +508,7 @@ func (lbft *Lbft) maybeSendViewChange() {
 	if lbft.hasPrimary() {
 		return
 	}
-	log.Debugf("Primary %s has no PrimaryID, send view change", lbft.options.ID)
+	//log.Debugf("Primary %s has no PrimaryID, send view change", lbft.options.ID)
 	lbft.sendViewChange(nil)
 }
 
@@ -565,11 +565,11 @@ func (lbft *Lbft) handleConsensusMsg() {
 			case *Message_Commit:
 				if commit := msg.GetCommit(); commit != nil {
 					if !lbft.hasPrimary() {
-						log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
+						//log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
 					} else if commit.Chain == lbft.options.Chain && commit.PrimaryID != lbft.primaryID {
-						log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
+						//log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
 					} else if commit.Chain == lbft.options.Chain && commit.SeqNo <= lbft.lastSeqNum() {
-						log.Debugf("Replica %s received commit message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.SeqNo, lbft.lastSeqNum())
+						//log.Debugf("Replica %s received commit message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.SeqNo, lbft.lastSeqNum())
 					} else {
 						lbft.handleLbftCoreMsg(commit.Name, msg)
 					}
@@ -577,9 +577,9 @@ func (lbft *Lbft) handleConsensusMsg() {
 			case *Message_Committed:
 				if committed := msg.GetCommitted(); committed != nil {
 					if committed.Chain != lbft.options.Chain {
-						log.Errorf("Replica %s received committed message from %s for consensus %s : ignore diff chain (%s==%s) ", lbft.options.ID, committed.ReplicaID, committed.Name, committed.Chain, lbft.options.Chain)
+						//log.Errorf("Replica %s received committed message from %s for consensus %s : ignore diff chain (%s==%s) ", lbft.options.ID, committed.ReplicaID, committed.Name, committed.Chain, lbft.options.Chain)
 					} else if committed.SeqNo <= lbft.execSeqNum() {
-						log.Debugf("Replica %s received committed message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, committed.ReplicaID, committed.Name, committed.SeqNo, lbft.execSeqNum())
+						//log.Debugf("Replica %s received committed message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, committed.ReplicaID, committed.Name, committed.SeqNo, lbft.execSeqNum())
 					} else {
 						lbft.recvCommitted(committed)
 					}
@@ -591,7 +591,7 @@ func (lbft *Lbft) handleConsensusMsg() {
 					} else {
 						if requestBatch := lbft.getCommittedReqeustBatch(committed.SeqNo); requestBatch != nil {
 							key := requestBatch.key()
-							log.Infof("Replica %s received fetch committed message from %s : broadcast committed for %s ", lbft.options.ID, committed.ReplicaID, key)
+							//log.Infof("Replica %s received fetch committed message from %s : broadcast committed for %s ", lbft.options.ID, committed.ReplicaID, key)
 							ctt := &Committed{
 								Name:         key,
 								Chain:        lbft.options.Chain,
@@ -608,7 +608,7 @@ func (lbft *Lbft) handleConsensusMsg() {
 			case *Message_Viewchange:
 				if vc := msg.GetViewchange(); vc != nil {
 					if vc.Chain != lbft.options.Chain {
-						log.Errorf("Replica %s received view change from %s : ignore diff chain (%s==%s) ", lbft.options.ID, vc.ReplicaID, vc.Chain, lbft.options.Chain)
+						//log.Errorf("Replica %s received view change from %s : ignore diff chain (%s==%s) ", lbft.options.ID, vc.ReplicaID, vc.Chain, lbft.options.Chain)
 						return
 					}
 					lbft.recvViewChange(vc)
@@ -619,9 +619,9 @@ func (lbft *Lbft) handleConsensusMsg() {
 						log.Errorf("Replica %s received null request from %s : ignore diff chain (%s==%s) ", lbft.options.ID, np.ReplicaID, np.Chain, lbft.options.Chain)
 						return
 					}
-					log.Debugf("Replica %s received null request from %s", lbft.options.ID, np.ReplicaID)
+					//log.Debugf("Replica %s received null request from %s", lbft.options.ID, np.ReplicaID)
 					if lbft.primaryID != np.PrimaryID && np.PrimaryID == np.ReplicaID {
-						log.Infof("Replica %s view change : vote new PrimaryID %s (%s), null request", lbft.options.ID, np.PrimaryID, lbft.primaryID)
+						//log.Infof("Replica %s view change : vote new PrimaryID %s (%s), null request", lbft.options.ID, np.PrimaryID, lbft.primaryID)
 						lbft.primaryID = np.PrimaryID
 						lbft.lastSeqNo = np.H
 						lbft.seqNo = np.H
@@ -644,7 +644,7 @@ func (lbft *Lbft) nullRequestHandler() {
 		return
 	}
 	if lbft.isPrimary() {
-		log.Debugf("Primary %s null request timer expired, sending null request", lbft.options.ID)
+		//log.Debugf("Primary %s null request timer expired, sending null request", lbft.options.ID)
 		nullRequest := &NullRequest{
 			ReplicaID: lbft.options.ID,
 			Chain:     lbft.options.Chain,
@@ -654,7 +654,7 @@ func (lbft *Lbft) nullRequestHandler() {
 		lbft.broadcast(lbft.options.Chain, &Message{Payload: &Message_NullReqest{NullReqest: nullRequest}})
 		lbft.nullRequestTimerStart()
 	} else {
-		log.Debugf("Replica %s null request timer expired, sending view change", lbft.options.ID)
+		//log.Debugf("Replica %s null request timer expired, sending view change", lbft.options.ID)
 		lbft.sendViewChange(nil)
 	}
 }
@@ -719,13 +719,13 @@ func (lbft *Lbft) recvViewChange(vc *ViewChange) {
 		lbft.voteViewChange.Add(vc.ReplicaID, vc)
 	}
 	cnt := lbft.voteViewChange.Size()
-	log.Infof("Replica %s received view change message from %s for voter %s , vote size %d", lbft.options.ID, vc.ReplicaID, vc.PrimaryID, cnt)
+	//log.Infof("Replica %s received view change message from %s for voter %s , vote size %d", lbft.options.ID, vc.ReplicaID, vc.PrimaryID, cnt)
 	if cnt == 1 {
 		lbft.viewChangeTimer.Reset(lbft.options.ViewChange)
 	} else if cnt == lbft.intersectionQuorum() {
 		lbft.lastPrimaryID = lbft.primaryID
 		lbft.primaryID = ""
-		log.Infof("Replica %s start to vote new PrimaryID, view change", lbft.options.ID)
+		//log.Infof("Replica %s start to vote new PrimaryID, view change", lbft.options.ID)
 		lbft.viewChangeTimer.Stop()
 		lbft.resetViewChangePeriodTimer()
 		lbft.nullRequestTimerStart()
@@ -750,7 +750,7 @@ func (lbft *Lbft) newView(vc *ViewChange) {
 	lbft.lastSeqNo = vc.H
 	lbft.seqNo = vc.H
 	lbft.votedCnt = 0
-	log.Infof("Replica %s view change : vote new PrimaryID %s", lbft.options.ID, vc.PrimaryID)
+	//log.Infof("Replica %s view change : vote new PrimaryID %s", lbft.options.ID, vc.PrimaryID)
 	lbft.verifySeqNo = vc.H
 	lbft.updateExecSeqNo(vc.H)
 	lbft.iterInstance(func(key string, instance *lbftCore) {
@@ -758,7 +758,7 @@ func (lbft *Lbft) newView(vc *ViewChange) {
 			delete(lbft.lbftCores, key)
 			instance.stop()
 		} else {
-			log.Debugf("Replica %s alreay commmit for consensus %s, view change", lbft.options.ID, instance.name)
+			//log.Debugf("Replica %s alreay commmit for consensus %s, view change", lbft.options.ID, instance.name)
 		}
 	})
 	for len(lbft.lbftCoreChan) > 0 {
@@ -782,7 +782,7 @@ func (lbft *Lbft) newView(vc *ViewChange) {
 
 func (lbft *Lbft) recvCommitted(ct *Committed) {
 	if ct.SeqNo <= lbft.execSeqNum() || lbft.hasCommittedReqeustBatch(ct.SeqNo) {
-		log.Debugf("Replica %s received committed message from %s for consensus %s, delay", lbft.options.ID, ct.ReplicaID, ct.Name)
+		//log.Debugf("Replica %s received committed message from %s for consensus %s, delay", lbft.options.ID, ct.ReplicaID, ct.Name)
 		delete(lbft.voteCommitted, ct.Name)
 		for k, v := range lbft.voteCommitted {
 			_, ticket := v.Voter()
@@ -800,7 +800,7 @@ func (lbft *Lbft) recvCommitted(ct *Committed) {
 		lbft.voteCommitted[ct.Name] = v
 	}
 	v.Add(ct.ReplicaID, ct)
-	log.Infof("Replica %s received committed message from %s for consensus %s, vote %d", lbft.options.ID, ct.ReplicaID, ct.Name, v.Size())
+	//log.Infof("Replica %s received committed message from %s for consensus %s, vote %d", lbft.options.ID, ct.ReplicaID, ct.Name, v.Size())
 	if quorum := v.VoterByTicket(ct); quorum >= lbft.intersectionQuorum() {
 		lbft.addCommittedReqeustBatch(ct.SeqNo, ct.RequestBatch)
 		delete(lbft.voteCommitted, ct.Name)
@@ -813,7 +813,7 @@ func (lbft *Lbft) addCommittedReqeustBatch(seqNo uint64, requestBatch *RequestBa
 	if _, ok := lbft.committedRequestBatch[seqNo]; ok {
 		return
 	}
-	log.Infof("Replica %s add committed requestBatch %d (%s)", lbft.options.ID, seqNo, hash(requestBatch))
+	//log.Infof("Replica %s add committed requestBatch %d (%s)", lbft.options.ID, seqNo, hash(requestBatch))
 	lbft.committedRequestBatch[seqNo] = requestBatch
 	lbft.updateLastSeqNo(seqNo)
 	lbft.updateVerifySeqNo(seqNo)
@@ -866,7 +866,7 @@ func (lbft *Lbft) checkpoint() {
 			}
 		} else if seqNo == checkpoint {
 			height := lbft.incrExecSeqNum()
-			log.Debugf("Replica %s write requestBatch %d (%s, %d transactions) ", lbft.options.ID, seqNo, hash(reqBatch), len(reqBatch.Requests))
+			//log.Debugf("Replica %s write requestBatch %d (%s, %d transactions) ", lbft.options.ID, seqNo, hash(reqBatch), len(reqBatch.Requests))
 			lbft.committedRequestBatchChan <- &committedRequestBatch{requestBatch: reqBatch, seqNo: height}
 			delete(lbft.committedRequestBatch, seqNo-uint64(lbft.options.K))
 			checkpoint = lbft.execSeqNum() + 1
@@ -882,10 +882,10 @@ func (lbft *Lbft) checkpoint() {
 	}
 
 	if cnt := len(keys); cnt > 0 && keys[cnt-1] > checkpoint+uint64(lbft.options.K) {
-		log.Infof("Replica %s need seqNo %d ", lbft.options.ID, lbft.execSeqNum()+1)
-		for seqNo, reqBatch := range lbft.committedRequestBatch {
-			log.Infof("Replica %s seqNo %d : %s", lbft.options.ID, seqNo, reqBatch.key())
-		}
+		//log.Infof("Replica %s need seqNo %d ", lbft.options.ID, lbft.execSeqNum()+1)
+		//for seqNo, reqBatch := range lbft.committedRequestBatch {
+		//	log.Infof("Replica %s seqNo %d : %s", lbft.options.ID, seqNo, reqBatch.key())
+		//}
 		log.Panicf("Replica %s fallen behind over %d", lbft.options.ID, lbft.options.K)
 	}
 }

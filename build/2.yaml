@@ -8,7 +8,7 @@ net:
     routeAddress: ["127.0.0.1:10001"]
 
 log:
-  level: "info"
+  level: "debug"
 
 jrpc:
   enabled: true
@@ -17,6 +17,8 @@ jrpc:
 blockchain:
   id: "00"
   datadir: "datadir/2"
+  profPort: "6062"
+
 
 issueaddr:
   addr: ["6ce1bb0858e71b50d603ebe4bec95b11d8833e6d"]
@@ -34,7 +36,7 @@ consensus:
     "N": 4
     Q: 3
     K: 10
-    blockSize: 2000 
+    blockSize: 5000
     blockTimeout: 8s
     blockInterval: 10s
     blockDelay: 10s
