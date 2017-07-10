@@ -22,6 +22,7 @@ import (
 	"math/big"
 
 	"github.com/bocheninc/L0/components/crypto"
+	"github.com/bocheninc/L0/components/log"
 	"github.com/bocheninc/L0/components/utils"
 	"github.com/bocheninc/L0/core/accounts"
 	"github.com/bocheninc/L0/core/ledger/state"
@@ -81,10 +82,11 @@ func (l *Ledger) Height(ignore string, reply *uint32) error {
 	return nil
 }
 
-//GetBalance returns balance by account address
+//GetBalance return nonce
 func (l *Ledger) GetBalance(addr string, reply *state.Balance) error {
 	amount, nonce := l.ledger.GetBalanceNonce(accounts.HexToAddress(addr))
 	nonce = nonce - 1
+	log.Debug("amount: ", amount, " nonce: ", nonce)
 	*reply = state.Balance{Amount: amount, Nonce: nonce}
 	return nil
 }

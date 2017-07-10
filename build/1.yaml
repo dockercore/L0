@@ -17,6 +17,8 @@ jrpc:
 blockchain:
   id: "00"
   datadir: "datadir/1"
+  cpuprofile: "profile/prof_node1"
+  profPort: "6061"
 
 issueaddr:
   addr: ["6ce1bb0858e71b50d603ebe4bec95b11d8833e6d"]
@@ -34,7 +36,7 @@ consensus:
     "N": 4
     Q: 3
     K: 10
-    blockSize: 2000 
+    blockSize: 2000
     blockTimeout: 8s
     blockInterval: 10s
     blockDelay: 10s

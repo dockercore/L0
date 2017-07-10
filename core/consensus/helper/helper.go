@@ -18,7 +18,9 @@
 
 package helper
 
-import "github.com/bocheninc/L0/core/consensus"
+import (
+	"github.com/bocheninc/L0/core/types"
+)
 
 // NewStack Create Stack instance
 func NewStack() *Stack {
@@ -29,32 +31,32 @@ func NewStack() *Stack {
 type Stack struct {
 }
 
-// NewTransaction Implenment consensus.IStack
-func (stack *Stack) NewTransaction() consensus.ITransaction {
-	return nil
-}
-
 // GetLastSeqNo Implenment consensus.IStack
 func (stack *Stack) GetLastSeqNo() uint64 {
 	return 0
 }
 
 // VerifyTxsInConsensus Implenment consensus.IStack
-func (stack *Stack) VerifyTxsInConsensus(txs []consensus.ITransaction, primary bool) []consensus.ITransaction {
+func (stack *Stack) VerifyTxsInConsensus(txs []*types.Transaction, primary bool) []*types.Transaction {
 	return txs
 }
 
 // IterTransaction  Implenment consensus.IStack
-func (stack *Stack) IterTransaction(func(consensus.ITransaction) bool) {
+func (stack *Stack) IterTransaction(func(*types.Transaction) bool) {
 
 }
 
 // Removes  Implenment consensus.IStack
-func (stack *Stack) Removes([]consensus.ITransaction) {
+func (stack *Stack) Removes([]*types.Transaction) {
 
 }
 
 // Len  Implenment consensus.IStack
 func (stack *Stack) Len() int {
 	return 0
+}
+
+// GetGroupingTxs  Implenment consensus.IStack
+func (stack *Stack) GetGroupingTxs(maxSize, maxGroup uint64) [][]*types.Transaction {
+	return nil
 }

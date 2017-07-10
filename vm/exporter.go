@@ -23,7 +23,6 @@ package vm
 import (
 	"bytes"
 
-	"github.com/bocheninc/L0/components/log"
 	"github.com/yuin/gopher-lua"
 )
 
@@ -49,8 +48,7 @@ func genAccountFunc(ctx *CTX) lua.LGFunction {
 
 		balances, err := ctx.getBalances(addr)
 		if err != nil {
-			log.Error("get balances error", err)
-			l.Push(lua.LNil)
+			l.RaiseError("get balances error addr:%s  err:%s", addr, err)
 			return 1
 		}
 
@@ -66,8 +64,7 @@ func genAccountFunc(ctx *CTX) lua.LGFunction {
 func genTransferFunc(ctx *CTX) lua.LGFunction {
 	return func(l *lua.LState) int {
 		if l.GetTop() != 2 {
-			l.Push(lua.LBool(false))
-			log.Warnf("param illegality when invoke Transfer payload:\n%s", ctx.payload())
+			l.RaiseError("param illegality when invoke Transfer")
 			return 1
 		}
 
@@ -76,8 +73,7 @@ func genTransferFunc(ctx *CTX) lua.LGFunction {
 		txType := uint32(0)
 		err := ctx.transfer(recipientAddr, amout, txType)
 		if err != nil {
-			log.Errorf("contract do transfer error recipientAddr:%s, amout:%g, txType:%d  err:%s", recipientAddr, amout, txType, err)
-			l.Push(lua.LBool(false))
+			l.RaiseError("contract do transfer error recipientAddr:%s, amout:%d, txType:%d  err:%s", recipientAddr, amout, txType, err)
 			return 1
 		}
 
@@ -97,16 +93,14 @@ func genCurrentBlockHeight(ctx *CTX) lua.LGFunction {
 func genGetState(ctx *CTX) lua.LGFunction {
 	return func(l *lua.LState) int {
 		if l.GetTop() != 1 {
-			log.Warnf("param illegality when invoke GetState payload:\n%s", ctx.payload())
-			l.Push(lua.LNil)
+			l.RaiseError("param illegality when invoke GetState")
 			return 1
 		}
 
 		key := l.CheckString(1)
 		data, err := ctx.getState(key)
 		if err != nil {
-			log.Error("getState error ", err)
-			l.Push(lua.LNil)
+			l.RaiseError("getState error key:%s  err:%s", key, err)
 			return 1
 		}
 		if data == nil {
@@ -116,8 +110,7 @@ func genGetState(ctx *CTX) lua.LGFunction {
 
 		buf := bytes.NewBuffer(data)
 		if lv, err := byteToLValue(buf); err != nil {
-			log.Error("byteToLValue error")
-			l.Push(lua.LNil)
+			l.RaiseError("byteToLValue error")
 		} else {
 			l.Push(lv)
 		}
@@ -129,8 +122,7 @@ func genGetState(ctx *CTX) lua.LGFunction {
 func genPutState(ctx *CTX) lua.LGFunction {
 	return func(l *lua.LState) int {
 		if l.GetTop() != 2 {
-			l.Push(lua.LNil)
-			log.Warnf("param illegality when invoke PutState payload:\n%s", ctx.payload())
+			l.RaiseError("param illegality when invoke PutState")
 			return 1
 		}
 
@@ -140,8 +132,7 @@ func genPutState(ctx *CTX) lua.LGFunction {
 		data := lvalueToByte(value)
 		err := ctx.putState(key, data)
 		if err != nil {
-			log.Error("putState error", err)
-			l.Push(lua.LBool(false))
+			l.RaiseError("putState error key:%s  err:%s", key, err)
 		} else {
 			l.Push(lua.LBool(true))
 		}
@@ -153,16 +144,14 @@ func genPutState(ctx *CTX) lua.LGFunction {
 func genDelState(ctx *CTX) lua.LGFunction {
 	return func(l *lua.LState) int {
 		if l.GetTop() != 1 {
-			l.Push(lua.LNil)
-			log.Warnf("param illegality when invoke DelState payload:\n%s", ctx.payload())
+			l.RaiseError("param illegality when invoke DelState")
 			return 1
 		}
 
 		key := l.CheckString(1)
 		err := ctx.delState(key)
 		if err != nil {
-			log.Error("delState error", err)
-			l.Push(lua.LBool(false))
+			l.RaiseError("delState error key:%s   err:%s", key, err)
 		} else {
 			l.Push(lua.LBool(true))
 		}

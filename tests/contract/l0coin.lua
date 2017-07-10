@@ -2,15 +2,16 @@
 local L0 = require("L0")
 
 -- 合约创建时会被调用一次，之后就不会被调用
-function L0Init()
+function L0Init(func, args)
+    print("in L0Init")
     L0.PutState("minter", L0.Account().Address)
     L0.PutState("balances", {})
-
-    return true
+    return true, "ok"
 end
 
 -- 每次合约执行都调用
 function L0Invoke(func, args)
+    print("in L0Invoke")
     local receiver = args[1]
     local amount = tonumber(args[2])
     
@@ -22,7 +23,13 @@ function L0Invoke(func, args)
         transfer(receiver, amount)
     end
 
-    return true
+    return true, "ok"
+end
+
+-- 查询
+function L0Query(func,args)
+    print("in L0Query",func,args)
+    return true, "L0query ok"
 end
 
 function mint(receiver, amount)
@@ -42,10 +49,10 @@ function send(receiver, amount)
     local sender = L0.Account().Address
     local balances = L0.GetState("balances")
 
-    print(sender)
-    print(balances[sender])
-    print(balances[receiver])
-    print(amount)
+    print("sender: ",sender)
+    print("sender balance: ",balances[sender])
+    print("receiver balance: ",balances[receiver])
+    print("amount: ",amount)
 
     if (balances[sender] < amount) then
         return

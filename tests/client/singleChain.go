@@ -54,7 +54,7 @@ func sendTx() {
 	for {
 		select {
 		case tx := <-txChan:
-			fmt.Println("Hash:", tx.Hash(), " Nonce: ", tx.Nonce(), " Type:", tx.GetType(), "txChan size:", len(txChan))
+			//fmt.Println("Hash:", tx.Hash(), " Nonce: ", tx.Nonce(), " Type:", tx.GetType(), "txChan size:", len(txChan))
 			Relay(NewMsg(0x14, tx.Serialize()))
 		}
 	}

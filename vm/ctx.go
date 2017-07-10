@@ -1,20 +1,21 @@
-// Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
-//
-// This file is part of L0
-//
-// The L0 is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The L0 is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+/*
+	Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
+
+	This file is part of L0
+
+	The L0 is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	The L0 is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
 // the vm execute context
 
@@ -31,7 +32,8 @@ import (
 )
 
 const (
-	contractCodeKey = "__CONTRACT_CODE_KEY__"
+	//ContractCodeKey get contract code by key from db
+	ContractCodeKey = "__CONTRACT_CODE_KEY__"
 )
 
 // CTX the vm execute context
@@ -60,6 +62,9 @@ func NewCTX(tx *types.Transaction, cs *types.ContractSpec, l0Handler contract.IS
 }
 
 func (ctx *CTX) transfer(recipientAddr string, amount int64, txType uint32) error {
+	if err := checkAddr(recipientAddr); err != nil {
+		return err
+	}
 	if amount <= 0 {
 		return errors.New("amount must above 0")
 	}
@@ -108,6 +113,9 @@ func (ctx *CTX) currentBlockHeight() uint32 {
 }
 
 func (ctx *CTX) getBalances(addr string) (*big.Int, error) {
+	if err := checkAddr(addr); err != nil {
+		return nil, err
+	}
 	if v, ok := ctx.TransferQueue.balancesMap[addr]; ok {
 		return big.NewInt(v), nil
 	}
@@ -116,7 +124,7 @@ func (ctx *CTX) getBalances(addr string) (*big.Int, error) {
 }
 
 func (ctx *CTX) putState(key string, value []byte) error {
-	if err := checkStateKey(key); err != nil {
+	if err := checkStateKeyValue(key, value); err != nil {
 		return err
 	}
 
@@ -175,22 +183,14 @@ func (ctx *CTX) commit() {
 func getContractCode(cs *types.ContractSpec, l0Handler contract.ISmartConstract) string {
 	code := cs.ContractCode
 	if code != nil && len(code) > 0 {
-		l0Handler.AddState(contractCodeKey, code)
+		l0Handler.AddState(ContractCodeKey, code)
 		return string(code)
 	}
 
-	code, err := l0Handler.GetState(contractCodeKey)
+	code, err := l0Handler.GetState(ContractCodeKey)
 	if code != nil && err == nil {
 		return string(code)
 	}
 
 	return ""
-}
-
-func checkStateKey(key string) error {
-	if contractCodeKey == key {
-		return errors.New("state key illegal:" + key)
-	}
-
-	return nil
 }

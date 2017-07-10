@@ -24,7 +24,6 @@ import (
 	"github.com/bocheninc/L0/components/log"
 	"github.com/bocheninc/L0/core/consensus"
 	"github.com/bocheninc/L0/core/consensus/lbft"
-	"github.com/bocheninc/L0/core/consensus/nbft"
 	"github.com/bocheninc/L0/core/consensus/noops"
 )
 
@@ -33,8 +32,6 @@ func NewConsenter(option *Options, stack consensus.IStack) (consenter consensus.
 	plugin := strings.ToLower(option.Plugin)
 	if plugin == "lbft" {
 		consenter = lbft.NewLbft(option.Lbft, stack)
-	} else if plugin == "nbft" {
-		consenter = nbft.NewNbft(option.Nbft, stack)
 	} else {
 		if plugin != "noops" {
 			log.Warnf("Unspport consenter of plugin %s, use default plugin noops", plugin)
@@ -52,7 +49,6 @@ func NewDefaultOptions() *Options {
 	options := &Options{
 		Plugin: "noops",
 		Noops:  noops.NewDefaultOptions(),
-		Nbft:   nbft.NewDefaultOptions(),
 		Lbft:   lbft.NewDefaultOptions(),
 	}
 	return options
@@ -61,7 +57,6 @@ func NewDefaultOptions() *Options {
 // Options Define consenter options
 type Options struct {
 	Noops  *noops.Options
-	Nbft   *nbft.Options
 	Lbft   *lbft.Options
 	Plugin string
 }

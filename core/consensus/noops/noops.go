@@ -25,6 +25,7 @@ import (
 
 	"github.com/bocheninc/L0/components/log"
 	"github.com/bocheninc/L0/core/consensus"
+	"github.com/bocheninc/L0/core/types"
 )
 
 // NewNoops Create Noops
@@ -37,7 +38,7 @@ func NewNoops(options *Options, stack consensus.IStack) *Noops {
 		noops.options.CommitTxChanSize = options.BlockSize
 	}
 	noops.committedTxsChan = make(chan *consensus.CommittedTxs, noops.options.CommittedTxsChanSize)
-	noops.broadcastChan = make(chan consensus.IBroadcast, noops.options.BroadcastChanSize)
+	noops.broadcastChan = make(chan *consensus.BroadcastConsensus, noops.options.BroadcastChanSize)
 	noops.blockTimer = time.NewTimer(noops.options.BlockInterval)
 	noops.blockTimer.Stop()
 	noops.seqNo = noops.stack.GetLastSeqNo()
@@ -49,7 +50,7 @@ type Noops struct {
 	options          *Options
 	stack            consensus.IStack
 	committedTxsChan chan *consensus.CommittedTxs
-	broadcastChan    chan consensus.IBroadcast
+	broadcastChan    chan *consensus.BroadcastConsensus
 	blockTimer       *time.Timer
 	seqNo            uint64
 	exit             chan struct{}
@@ -86,8 +87,8 @@ func (noops *Noops) Start() {
 func (noops *Noops) processBlock() {
 	noops.blockTimer.Stop()
 	if noops.stack.Len() > 0 {
-		txs := []consensus.ITransaction{}
-		noops.stack.IterTransaction(func(tx consensus.ITransaction) bool {
+		txs := []*types.Transaction{}
+		noops.stack.IterTransaction(func(tx *types.Transaction) bool {
 			txs = append(txs, tx)
 			if len(txs) == noops.options.BlockSize {
 				return true
@@ -116,13 +117,8 @@ func (noops *Noops) RecvConsensus(payload []byte) {
 	//noops.broadcastChan<-
 }
 
-// BroadcastTransactionChannel Broadcast consensus data
-func (noops *Noops) BroadcastTransactionChannel() <-chan consensus.ITransaction {
-	return nil
-}
-
 // BroadcastConsensusChannel Broadcast consensus data
-func (noops *Noops) BroadcastConsensusChannel() <-chan consensus.IBroadcast {
+func (noops *Noops) BroadcastConsensusChannel() <-chan *consensus.BroadcastConsensus {
 	return noops.broadcastChan
 }
 

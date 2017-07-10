@@ -135,7 +135,7 @@ func (blockchain *Blockchain) GetTransactionByTxHash(txHash []byte) (*types.Tran
 	}
 
 	if len(txBytes) == 0 {
-		return nil, errors.New("not found transaction by txHash")
+		return nil, errors.New("not found transaction ")
 	}
 
 	tx := new(types.Transaction)
@@ -143,7 +143,9 @@ func (blockchain *Blockchain) GetTransactionByTxHash(txHash []byte) (*types.Tran
 	if err := tx.Deserialize(txBytes); err != nil {
 		return nil, err
 	}
+
 	return tx, nil
+
 }
 
 // GetBlockchainHeight gets blockchain height
@@ -160,12 +162,9 @@ func (blockchain *Blockchain) GetBlockchainHeight() (uint32, error) {
 func (blockchain *Blockchain) AppendBlock(block *types.Block) []*db.WriteBatch {
 	blockHashBytes := block.Hash().Bytes()
 	blockHeightBytes := utils.Uint32ToBytes(block.Height())
-
 	// storage
-	var (
-		writeBatchs []*db.WriteBatch
-		txHashs     []crypto.Hash
-	)
+	var writeBatchs []*db.WriteBatch
+	var txHashs []crypto.Hash
 
 	writeBatchs = append(writeBatchs, db.NewWriteBatch(blockchain.columnFamily, db.OperationPut, blockHashBytes, block.Header.Serialize())) // block hash => block
 	writeBatchs = append(writeBatchs, db.NewWriteBatch(blockchain.indexColumnFamily, db.OperationPut, blockHeightBytes, blockHashBytes))    // height => block hash

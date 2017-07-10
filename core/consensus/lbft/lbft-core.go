@@ -27,18 +27,22 @@ import (
 
 func newLbftCore(name string, lbft *Lbft) *lbftCore {
 	lbftCore := &lbftCore{
-		name:        name,
-		lbft:        lbft,
-		msgChan:     make(chan *Message, lbft.options.BufferSize),
-		prepareVote: vote.NewVote(),
-		commitVote:  vote.NewVote(),
+		name:            name,
+		lbft:            lbft,
+		msgChan:         make(chan *Message, lbft.options.BufferSize),
+		exit:            make(chan struct{}),
+		prepareVote:     vote.NewVote(),
+		commitVote:      vote.NewVote(),
+		prePrepareAsync: lbft.prePrepareAsync,
+		commitAsync:     lbft.commitAsync,
+		firstTime:       time.Now(),
 	}
 	lbftCore.clsTimeoutTimer = time.NewTimer(2 * lbft.options.BlockTimeout)
 	go func() {
 		select {
 		case <-lbftCore.clsTimeoutTimer.C:
-			close(lbftCore.msgChan)
 			lbft.removeInstance(name)
+			close(lbftCore.msgChan)
 		case <-lbftCore.exit:
 		}
 	}()
@@ -53,6 +57,9 @@ type lbftCore struct {
 	commitVote      *vote.Vote
 	clsTimeoutTimer *time.Timer
 
+	prePrepareAsync *asyncSeqNo
+	commitAsync     *asyncSeqNo
+
 	isPassPrePrepare bool
 	isPassPrepare    bool
 	isPassCommit     bool
@@ -64,14 +71,18 @@ type lbftCore struct {
 
 	exit      chan struct{}
 	isRunnig  bool
-	startTime time.Time
-	deltaTime [5]time.Duration
+	firstTime time.Time
 }
 
 func (instance *lbftCore) recvMessage(msg *Message) {
 	if msg != nil {
-		if msg.GetPrePrepare() != nil {
+		if pprep := msg.GetPrePrepare(); pprep != nil {
+			log.Debugf("Replica %s core consenter %s received preprepare message from %s --- instance", instance.lbft.options.ID, pprep.Name, pprep.ReplicaID)
 			instance.start()
+		} else if prep := msg.GetPrepare(); prep != nil {
+			log.Debugf("Replica %s core consenter %s received prepare message from %s --- instance", instance.lbft.options.ID, prep.Name, prep.ReplicaID)
+		} else if cmt := msg.GetCommit(); cmt != nil {
+			log.Debugf("Replica %s core consenter %s received commit message from %s --- instance", instance.lbft.options.ID, cmt.Name, cmt.ReplicaID)
 		}
 		instance.msgChan <- msg
 	}
@@ -82,10 +93,13 @@ func (instance *lbftCore) start() {
 		log.Warnf("Replica %s core consenter %s alreay started", instance.lbft.options.ID, instance.name)
 		return
 	}
+	if time.Since(instance.firstTime) > instance.lbft.options.BlockTimeout {
+		log.Warnf("Replica %s core consenter %s delay too long", instance.lbft.options.ID, instance.name)
+		return
+	}
 	instance.isRunnig = true
-	instance.exit = make(chan struct{})
 	instance.clsTimeoutTimer.Stop()
-	timeoutTimer := time.NewTimer(instance.lbft.options.BlockTimeout)
+	timeoutTimer := time.NewTimer(instance.lbft.options.BlockTimeout - time.Since(instance.firstTime))
 	go func() {
 		for {
 			select {
@@ -93,14 +107,13 @@ func (instance *lbftCore) start() {
 				if !instance.isPassCommit {
 					if instance.seqNo > instance.lbft.lastSeqNum() {
 						log.Debugf("Replica %s send view change for consensus %s : timeout (%d > %d)", instance.lbft.options.ID, instance.name, instance.seqNo, instance.lbft.lastSeqNum())
-						if instance.lbft.options.AutoVote {
-							instance.lbft.sendViewChange(nil)
-						}
+						//if instance.lbft.options.AutoVote {
+						instance.lbft.sendViewChange(nil)
+						//}
 					}
 				}
 			case <-instance.exit:
 				close(instance.msgChan)
-				instance.exit = nil
 				if !instance.isPassCommit {
 					if instance.seqNo > instance.lbft.verifySeqNum() {
 						log.Errorf("Replica %s failed to verify for consensus %s :  wrong verifySeqNo (%d <= %d),  previous verify failed ", instance.lbft.options.ID, instance.name, instance.seqNo, instance.lbft.verifySeqNum())
@@ -109,17 +122,19 @@ func (instance *lbftCore) start() {
 						log.Warnf("Replica %s is failed for consensus %s (%d<=%d)", instance.lbft.options.ID, instance.name, instance.seqNo, instance.lbft.lastSeqNum())
 					}
 				}
+				instance.prePrepareAsync.notify(instance.seqNo)
+				instance.commitAsync.notify(instance.seqNo)
 				//instance.deltaTime[4] = time.Since(instance.startTime)
 				//log.Infof("lbft_core_cost_time(%s)  deltatime(%s,%s,%s,%s) txs(%d)", instance.name, instance.deltaTime[1], instance.deltaTime[2], instance.deltaTime[3], instance.deltaTime[4], len(instance.requestBatch.Requests))
 				log.Debugf("Replica %s core consenter %s stopped", instance.lbft.options.ID, instance.name)
 				return
 			case msg := <-instance.msgChan:
-				switch tp := msg.Payload.(type) {
-				case *Message_PrePrepare:
-					instance.handlePrePrepare(msg.GetPrePrepare())
-				case *Message_Prepare:
+				switch tp := msg.Type; tp {
+				case MESSAGEPREPREPARE:
+					go instance.handlePrePrepare(msg.GetPrePrepare())
+				case MESSAGEPREPARE:
 					instance.handlePrepare(msg.GetPrepare())
-				case *Message_Commit:
+				case MESSAGECOMMIT:
 					instance.handleCommit(msg.GetCommit())
 				default:
 					log.Warnf("unsupport core consensus message type %v ", tp)
@@ -127,7 +142,6 @@ func (instance *lbftCore) start() {
 			}
 		}
 	}()
-	instance.startTime = time.Now()
 	log.Debugf("Replica %s core consenter %s started", instance.lbft.options.ID, instance.name)
 }
 
@@ -137,8 +151,6 @@ func (instance *lbftCore) stop() {
 		return
 	}
 	instance.isRunnig = false
-	instance.lbft.prePrepareAsync.notify(instance.seqNo)
-	instance.lbft.commitAsync.notify(instance.seqNo)
 	close(instance.exit)
 }
 
@@ -149,7 +161,7 @@ func (instance *lbftCore) isCross() bool {
 func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *RequestBatch) {
 	instance.seqNo = seqNo
 	instance.start()
-	if requestBatch.Id == EMPTYBLOCK {
+	if requestBatch.ID == EMPTYBLOCK {
 		instance.fromChain = instance.lbft.options.Chain
 		instance.toChain = instance.lbft.options.Chain
 	} else {
@@ -157,17 +169,17 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 		instance.toChain = requestBatch.toChain()
 	}
 	var verfiy bool
-	instance.lbft.prePrepareAsync.wait(instance.seqNo, func() {
+	instance.prePrepareAsync.wait(instance.seqNo, func() {
 		log.Debugf("Replica %s handle requestBatch for consensus %s : seqNo %d (async preprepare)", instance.lbft.options.ID, instance.name, instance.seqNo)
 		instance.waitForVerify()
-		if requestBatch.Id != EMPTYBLOCK && instance.fromChain == instance.lbft.options.Chain {
+		if requestBatch.ID != EMPTYBLOCK && instance.fromChain == instance.lbft.options.Chain {
 			//instance.lbft.stack.Removes(instance.lbft.toTxs(requestBatch))
-			id := requestBatch.Id
+			id := requestBatch.ID
 			t := time.Now()
 			txs := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), true)
 			log.Debugf("Replica %s VerifyTxsInConsensus elapsed %s for consensus %s(%d)", instance.lbft.options.ID, time.Now().Sub(t), instance.name, instance.seqNo)
 			requestBatch = instance.lbft.toRequestBatch(txs)
-			requestBatch.Id = id
+			requestBatch.ID = id
 
 			// go func(requestBatch *RequestBatch) {
 			// 	tts := instance.lbft.toTxs(requestBatch)
@@ -180,7 +192,7 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 
 			if instance.fromChain != instance.toChain {
 				log.Infof("Replica %s broadcast requestBatch message to %s  for consensus %s (%d transactions)", instance.lbft.options.ID, instance.toChain, instance.name, len(requestBatch.Requests))
-				instance.lbft.broadcast(instance.toChain, &Message{Payload: &Message_RequestBatch{RequestBatch: requestBatch}})
+				instance.lbft.broadcast(instance.toChain, &Message{Type: MESSAGEREQUESTBATCH, Payload: serialize(requestBatch)})
 			}
 		}
 
@@ -206,7 +218,7 @@ func (instance *lbftCore) handleRequestBatch(seqNo uint64, requestBatch *Request
 	}
 	log.Infof("Replica %s send prePrepare message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(requestBatch.Requests))
 	instance.handlePrePrepare(prePrepare)
-	instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Payload: &Message_PrePrepare{PrePrepare: prePrepare}})
+	instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Type: MESSAGEPREPREPARE, Payload: serialize(prePrepare)})
 
 }
 
@@ -221,7 +233,7 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 
 	requestBatch := preprep.Requests
 	var fromChain, toChain string
-	if requestBatch.Id == EMPTYBLOCK {
+	if requestBatch.ID == EMPTYBLOCK {
 		fromChain = instance.lbft.options.Chain
 		toChain = instance.lbft.options.Chain
 	} else {
@@ -239,16 +251,16 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 			return
 		}
 		var verify bool
-		instance.lbft.prePrepareAsync.wait(instance.seqNo, func() {
+		instance.prePrepareAsync.wait(instance.seqNo, func() {
 			log.Debugf("Replica %s handle preprepare for consensus %s : seqNo %d (async preprepare)", instance.lbft.options.ID, instance.name, instance.seqNo)
 			instance.waitForVerify()
-			if requestBatch.Id != EMPTYBLOCK && instance.lbft.options.Chain == fromChain && instance.seqNo > instance.lbft.seqNum() {
+			if requestBatch.ID != EMPTYBLOCK && instance.lbft.options.Chain == fromChain && instance.seqNo > instance.lbft.seqNum() {
 				//instance.lbft.stack.Removes(instance.lbft.toTxs(requestBatch))
 				t := time.Now()
 				txs := instance.lbft.stack.VerifyTxsInConsensus(instance.lbft.toTxs(requestBatch), false)
 				log.Debugf("Replica %s VerifyTxsInConsensus elapsed %s for consensus %s(%d)", instance.lbft.options.ID, time.Now().Sub(t), instance.name, instance.seqNo)
 				trequestBatch := instance.lbft.toRequestBatch(txs)
-				trequestBatch.Id = requestBatch.Id
+				trequestBatch.ID = requestBatch.ID
 				trequestBatch.Time = requestBatch.Time
 				// go func(requestBatch *RequestBatch) {
 				// 	tts := instance.lbft.toTxs(requestBatch)
@@ -271,7 +283,7 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 			log.Errorf("Replica %s for consensus %s failed to verify %d", instance.lbft.options.ID, instance.name, instance.seqNo)
 			return
 		}
-	} else if requestBatch.Id != EMPTYBLOCK {
+	} else if requestBatch.ID != EMPTYBLOCK {
 		if instance.toChain == instance.fromChain {
 			instance.lbft.resetEmptyBlockTimer()
 		} else {
@@ -288,7 +300,6 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 	//instance.seqNo = preprep.SeqNo
 	instance.digest = hash(instance.requestBatch)
 	instance.isPassPrePrepare = true
-	instance.deltaTime[1] = time.Since(instance.startTime)
 	prepare := &Prepare{
 		Name:      instance.name,
 		PrimaryID: instance.lbft.primaryID,
@@ -300,7 +311,7 @@ func (instance *lbftCore) handlePrePrepare(preprep *PrePrepare) {
 	}
 	log.Infof("Replica %s send prepare message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
 	instance.handlePrepare(prepare)
-	instance.broadcast(&Message{Payload: &Message_Prepare{Prepare: prepare}})
+	instance.broadcast(&Message{Type: MESSAGEPREPARE, Payload: serialize(prepare)})
 }
 
 func (instance *lbftCore) handlePrepare(prepare *Prepare) {
@@ -327,8 +338,6 @@ func (instance *lbftCore) handlePrepare(prepare *Prepare) {
 	instance.prepareVote.Add(prepare.ReplicaID, prepare)
 	log.Infof("Replica %s received prepare message from %s for consensus %s, voted %d", instance.lbft.options.ID, prepare.ReplicaID, prepare.Name, instance.prepareVote.Size())
 	if instance.isPassPrepare == false && instance.maybePreparePass() {
-		instance.deltaTime[2] = time.Since(instance.startTime)
-
 		commit := &Commit{
 			Name:      instance.name,
 			PrimaryID: instance.lbft.primaryID,
@@ -340,7 +349,7 @@ func (instance *lbftCore) handlePrepare(prepare *Prepare) {
 		}
 		log.Infof("Replica %s send commit message for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
 		instance.handleCommit(commit)
-		instance.broadcast(&Message{Payload: &Message_Commit{Commit: commit}})
+		instance.broadcast(&Message{Type: MESSAGECOMMIT, Payload: serialize(commit)})
 	}
 }
 
@@ -369,19 +378,23 @@ func (instance *lbftCore) handleCommit(commit *Commit) {
 	log.Infof("Replica %s received commit message from %s for consensus %s, voted %d", instance.lbft.options.ID, commit.ReplicaID, commit.Name, instance.commitVote.Size())
 
 	if instance.isPassCommit == false && instance.maybeCommitPass() {
-		instance.deltaTime[3] = time.Since(instance.startTime)
-		instance.lbft.commitAsync.wait(instance.seqNo, func() {
-			log.Infof("Replica %s succeed to commit for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
-			ctt := &Committed{
-				Name:         instance.name,
-				Chain:        instance.lbft.options.Chain,
-				ReplicaID:    instance.lbft.options.ID,
-				SeqNo:        instance.seqNo,
-				RequestBatch: instance.requestBatch,
+		go func(instance *lbftCore) {
+			if instance.isRunnig {
+				instance.commitAsync.wait(instance.seqNo, func() {
+					log.Infof("Replica %s succeed to commit for consensus %s (%d transactions)", instance.lbft.options.ID, instance.name, len(instance.requestBatch.Requests))
+					ctt := &Committed{
+						Name:         instance.name,
+						Chain:        instance.lbft.options.Chain,
+						ReplicaID:    instance.lbft.options.ID,
+						SeqNo:        instance.seqNo,
+						RequestBatch: instance.requestBatch,
+					}
+					//instance.lbft.lbftCoreCommittedChan <- ctt
+					instance.lbft.recvConsensusMsgChan <- &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)}
+					instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Type: MESSAGECOMMITTED, Payload: serialize(ctt)})
+				})
 			}
-			instance.lbft.lbftCoreCommittedChan <- ctt
-			instance.lbft.broadcast(instance.lbft.options.Chain, &Message{Payload: &Message_Committed{Committed: ctt}})
-		})
+		}(instance)
 	}
 }
 
