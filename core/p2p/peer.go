@@ -38,8 +38,8 @@ import (
 var (
 	scheme             = "encode"
 	delimiter          = "&"
-	filterN       uint = 100000
-	falsePositive      = 0.0001
+	filterN       uint = 10000000
+	falsePositive      = 0.00001
 )
 
 // PeerID represents the peer identity
@@ -171,15 +171,15 @@ func (peer *Peer) String() string {
 	return u.String()
 }
 
-// AddFilter adds data to bloomfilter
-func (peer *Peer) AddFilter(data []byte) {
-	peer.filter.Add(data)
+// AddFilter adds data to bloom filter
+func (peer *Peer) AddFilter(data []byte) bool {
+	return peer.filter.TestAndAdd(data)
 }
 
 // TestFilter tests data
-func (peer *Peer) TestFilter(data []byte) bool {
-	return peer.filter.Test(data)
-}
+//func (peer *Peer) TestFilter(data []byte) bool {
+//	return peer.filter.Test(data)
+//}
 
 // GetPeerAddress returns local peer address info
 func (peer *Peer) GetPeerAddress() string {
@@ -205,6 +205,14 @@ func (peer *Peer) getProto(cmd uint8) *protoRW {
 
 func (peer *Peer) run() {
 	//TODO: refactor this
+
+	go func() {
+		for {
+			<-time.NewTicker(time.Minute).C
+			peer.filter.ClearAll()
+		}
+	}()
+
 	conn := peer.Conn
 	peerManager := getPeerManager()
 	for {
@@ -214,12 +222,6 @@ func (peer *Peer) run() {
 			peerManager.delPeer <- conn
 			break
 		}
-		//TODO: refactor this to synchronous
-		// doHandshake -> doHandleshakeAck after this ... allow [ping, pong, peers, getpeers]
-		if msgCmd, ok := msgMap[m.Cmd]; ok {
-			log.Debugf("handle message %s, server address:%s", msgCmd, peer.Address)
-		}
-		// Update the ActiveTime when message reached
 		peerManager.alivePeer <- conn
 
 		switch m.Cmd {
@@ -233,10 +235,7 @@ func (peer *Peer) run() {
 		case getPeersMsg:
 			peer.onGetPeers(m, conn, peerManager)
 		default:
-			// TODO: refactor this
 			if p := peerManager.GetPeer(conn); p != nil {
-				// pp, ok := pm.peers.get(conn)
-				// log.Debugf("connection %v, peer %v, message- %v, peers:%v, peer: %v, ok: %v", conn, p, m.Cmd, pm.peers, pp, ok)
 				proto := p.getProto(m.Cmd)
 				if proto != nil {
 					proto.in <- *m

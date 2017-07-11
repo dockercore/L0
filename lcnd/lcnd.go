@@ -20,14 +20,14 @@ package lcnd
 
 import (
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
 	"sync"
-
 	"syscall"
+
+	_ "net/http/pprof"
 
 	"github.com/bocheninc/L0/components/db"
 	"github.com/bocheninc/L0/components/log"

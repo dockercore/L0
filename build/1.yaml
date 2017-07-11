@@ -18,6 +18,7 @@ blockchain:
   id: "00"
   datadir: "datadir/1"
   cpuprofile: "profile/prof_node1"
+
   profPort: "6061"
 
 issueaddr:
@@ -36,7 +37,7 @@ consensus:
     "N": 4
     Q: 3
     K: 10
-    blockSize: 2000
+    blockSize: 5000
     blockTimeout: 8s
     blockInterval: 10s
     blockDelay: 10s

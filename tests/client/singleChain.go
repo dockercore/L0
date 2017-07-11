@@ -48,6 +48,8 @@ var (
 
 func sendTx() {
 	TCPSend(srvAddress)
+	time.Sleep(time.Second * 10)
+
 	fmt.Println("start Send ...")
 	go generateIssueTx()
 	go generateAtomicTx()

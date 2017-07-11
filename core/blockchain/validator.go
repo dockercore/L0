@@ -459,7 +459,7 @@ func (vr *Validator) VerifyTxInTxPool(tx *types.Transaction) bool {
 		ok := vr.checkTransaction(tx)
 		if ok {
 			vr.txPool.Add(tx)
-			log.Debugf("added new tx, tx_hash: %v", tx.Hash().String())
+			//log.Debugf("added new tx, tx_hash: %v", tx.Hash().String())
 			return true
 		}
 

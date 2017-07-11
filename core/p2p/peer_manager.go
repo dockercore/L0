@@ -362,9 +362,9 @@ func (pm *peerManager) broadcast(msg *Msg) {
 	if msg != nil {
 		add := ""
 		for _, peer := range pm.peers.getPeers() {
-
-			n, err := msg.write(peer.Conn)
-			if err != nil {
+			//log.Debugf("Peer Manager broadcast message %d to peer %s", msg.Cmd, peer.Address)
+			// if msg.Cmd <= peersMsg || msg.Cmd == 23 || !peer.TestFilter(msg.CheckSum[:]) {
+			if n, err := msg.write(peer.Conn); err != nil {
 				log.Errorf("broadcast message write error %d - %v", n, err)
 				pm.delPeer <- peer.Conn
 			}

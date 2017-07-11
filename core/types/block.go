@@ -101,6 +101,9 @@ func (b *Block) Hash() crypto.Hash {
 	if hash := b.hash.Load(); hash != nil {
 		return hash.(crypto.Hash)
 	}
+	if b.Header == nil {
+		return crypto.Hash{}
+	}
 	v := b.Header.Hash()
 	b.hash.Store(v)
 	return v

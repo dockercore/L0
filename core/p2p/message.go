@@ -52,8 +52,7 @@ var (
 		peersMsg:    "peers",
 	}
 
-	maxMsgSize  uint64 = 1024 * 1024 * 100
-	nilCheckSum        = crypto.Sha256(nil)
+	maxMsgSize uint64 = 1024 * 1024 * 100
 )
 
 // MsgReadWriter is the interface that groups the p2p message Read and Write methods.

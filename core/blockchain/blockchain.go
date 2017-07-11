@@ -207,7 +207,7 @@ func (bc *Blockchain) ProcessTransaction(tx *types.Transaction) bool {
 
 // ProcessBlock processes new block from the network
 func (bc *Blockchain) ProcessBlock(blk *types.Block) bool {
-	log.Debugf("block previoushash %s, currentblockhash %s", blk.PreviousHash(), bc.CurrentBlockHash())
+	log.Debugf("block previous hash %s, current block hash %s", blk.PreviousHash(), bc.CurrentBlockHash())
 	if blk.PreviousHash() == bc.CurrentBlockHash() {
 		bc.ledger.AppendBlock(blk, true)
 		log.Infof("New Block  %s, height: %d Transaction Number: %d", blk.Hash(), blk.Height(), len(blk.Transactions))
