@@ -654,6 +654,7 @@ func (lbft *Lbft) nullRequestHandler() {
 		log.Debugf("Replica %s null request timer expired, sending view change", lbft.options.ID)
 		lbft.sendViewChange(nil)
 	}
+	log.Debugf("Replica %s channel size (%d %d %d %d %d)", lbft.options.ID, len(lbft.recvConsensusMsgChan), len(lbft.broadcastChan), len(lbft.committedTxsChan), len(lbft.committedRequestBatchChan), len(lbft.lbftCoreCommittedChan))
 }
 
 func (lbft *Lbft) nullRequestTimerStart() {
