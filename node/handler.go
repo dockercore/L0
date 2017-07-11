@@ -287,7 +287,7 @@ func (pm *ProtocolManager) OnGetBlocks(m p2p.Msg, peer *p2p.Peer) {
 		log.Errorf("GetBlocks Msg Deserialize error %v", err)
 		return
 	}
-	//TODO
+
 	for _, h := range getblocks.LocatorHashes {
 		// validate locator
 		log.Debugf("OnGetBlocks hash %s", h)

@@ -370,7 +370,7 @@ func (pm *peerManager) broadcast(msg *Msg) {
 			}
 			add = add + "  " + peer.Conn.RemoteAddr().String()
 		}
-		log.Debugln("broadcast message to:", add)
+		//log.Debugln("broadcast message to:", add)
 	} else {
 		log.Errorf("broadcast message error, msg is nil %v", msg)
 	}

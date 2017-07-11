@@ -210,7 +210,7 @@ func (lbft *Lbft) Start() {
 		defer lbft.waitGroup.Done()
 		lbft.handleConsensusMsg()
 	}()
-	log.Debugf("Replica %s consenter started", lbft.options.ID)
+	//log.Debugf("Replica %s consenter started", lbft.options.ID)
 	lbft.resetBlockTimer()
 }
 
@@ -223,22 +223,22 @@ func (lbft *Lbft) Stop() {
 	close(lbft.exit)
 	lbft.waitGroup.Wait()
 	lbft.exit = nil
-	log.Debugf("Replica %s consenter stopped", lbft.options.ID)
+	//log.Debugf("Replica %s consenter stopped", lbft.options.ID)
 }
 
 //RecvConsensus Receive consensus data for consenter
 func (lbft *Lbft) RecvConsensus(payload []byte) {
 	msg := &Message{}
 	if err := msg.Deserialize(payload); err != nil {
-		log.Errorf("Replica %s receive consensus message : unkown %v", lbft.options.ID, err)
+		//log.Errorf("Replica %s receive consensus message : unkown %v", lbft.options.ID, err)
 		return
 	}
 	if pprep := msg.GetPrePrepare(); pprep != nil {
-		log.Debugf("Replica %s core consenter %s received preprepare message from %s --- p2p", lbft.options.ID, pprep.Name, pprep.ReplicaID)
+		//log.Debugf("Replica %s core consenter %s received preprepare message from %s --- p2p", lbft.options.ID, pprep.Name, pprep.ReplicaID)
 	} else if prep := msg.GetPrepare(); prep != nil {
-		log.Debugf("Replica %s core consenter %s received prepare message from %s --- p2p", lbft.options.ID, prep.Name, prep.ReplicaID)
+		//log.Debugf("Replica %s core consenter %s received prepare message from %s --- p2p", lbft.options.ID, prep.Name, prep.ReplicaID)
 	} else if cmt := msg.GetCommit(); cmt != nil {
-		log.Debugf("Replica %s core consenter %s received commit message from %s --- p2p", lbft.options.ID, cmt.Name, cmt.ReplicaID)
+		//log.Debugf("Replica %s core consenter %s received commit message from %s --- p2p", lbft.options.ID, cmt.Name, cmt.ReplicaID)
 	}
 	//log.Debugf("Replica %s receive broadcast consensus message %s(%s)", lbft.options.ID, msg.info(), hash(msg))
 	lbft.recvConsensusMsgChan <- msg
@@ -359,7 +359,7 @@ func (lbft *Lbft) handleTransaction() {
 			time.Sleep(time.Second - t1.Sub(t2))
 			lbft.sendViewChange(vc)
 		case <-lbft.viewChangePeriodTimer.C:
-			log.Debugf("Replica %s view change period", lbft.options.ID)
+			//log.Debugf("Replica %s view change period", lbft.options.ID)
 			lbft.sendViewChange(nil)
 		case <-lbft.nullRequestTimer.C:
 			lbft.nullRequestHandler()
@@ -369,7 +369,7 @@ func (lbft *Lbft) handleTransaction() {
 				lbft.handleRequestBatch(requestBath)
 			}
 			lbft.emptyBlockTimerStart = false
-			log.Debugf("Replica %s stop empty block", lbft.options.ID)
+			//log.Debugf("Replica %s stop empty block", lbft.options.ID)
 		case <-lbft.blockTimer.C:
 			lbft.maybeSendViewChange()
 			lbft.submitRequestBatches()
@@ -393,7 +393,7 @@ func (lbft *Lbft) submitRequestBatches() {
 	lbft.stack.IterTransaction(func(tx *types.Transaction) bool {
 		if tx == nil && len(reqs) > 0 {
 			requestBath := &RequestBatch{Time: nano, Requests: reqs, ID: id}
-			log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
+			//log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
 			cnt = 0
 			nano = 0
 			toChain = ""
@@ -408,7 +408,7 @@ func (lbft *Lbft) submitRequestBatches() {
 		}
 		if toChain != "" && req.ToChain() != toChain {
 			requestBath := &RequestBatch{Time: nano, Requests: reqs, ID: id}
-			log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
+			//log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
 			cnt = 0
 			nano = 0
 			toChain = ""
@@ -426,7 +426,7 @@ func (lbft *Lbft) submitRequestBatches() {
 		cnt++
 		if cnt == lbft.options.BlockSize {
 			requestBath := &RequestBatch{Time: nano, Requests: reqs, ID: id}
-			log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
+			//log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
 			cnt = 0
 			nano = 0
 			toChain = ""
@@ -441,14 +441,14 @@ func (lbft *Lbft) submitRequestBatches() {
 	if len(reqs) > 0 {
 		requestBath := &RequestBatch{Time: nano, Requests: reqs, ID: id}
 		requestBatchList = append(requestBatchList, requestBath)
-		log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
+		//log.Debugf("Replica %s generate requestBatch %s : timestamp %d, transations %d", lbft.options.ID, hash(requestBath), requestBath.Time, len(requestBath.Requests))
 	}
 
 	for _, requestBatch := range requestBatchList {
 		if lbft.isValid(requestBatch, true) {
 			lbft.handleRequestBatch(requestBatch)
 		} else {
-			log.Warnf("Replica %s received requestBatch message for consensus %s : ignore illegal requestBatch (%s == %s)", lbft.options.ID, requestBatch.key(), requestBatch.fromChain(), lbft.options.Chain)
+			//log.Warnf("Replica %s received requestBatch message for consensus %s : ignore illegal requestBatch (%s == %s)", lbft.options.ID, requestBatch.key(), requestBatch.fromChain(), lbft.options.Chain)
 		}
 	}
 }
@@ -475,7 +475,7 @@ func (lbft *Lbft) resetEmptyBlockTimer() {
 	t2 := t1.Truncate(lbft.options.BlockInterval)
 	lbft.emptyBlockTimer.Reset(2*lbft.options.BlockInterval - t1.Sub(t2))
 	lbft.emptyBlockTimerStart = true
-	log.Debugf("Replica %s start empty block", lbft.options.ID)
+	//log.Debugf("Replica %s start empty block", lbft.options.ID)
 }
 
 func (lbft *Lbft) softResetEmptyBlockTimer() {
@@ -487,7 +487,7 @@ func (lbft *Lbft) softResetEmptyBlockTimer() {
 	t2 := t1.Truncate(lbft.options.BlockInterval)
 	lbft.emptyBlockTimer.Reset(2*lbft.options.BlockInterval - t1.Sub(t2))
 	lbft.emptyBlockTimerStart = true
-	log.Debugf("Replica %s start empty block", lbft.options.ID)
+	//log.Debugf("Replica %s start empty block", lbft.options.ID)
 }
 
 func (lbft *Lbft) hasPrimary() bool {
@@ -516,10 +516,10 @@ func (lbft *Lbft) handleConsensusMsg() {
 			case MESSAGEREQUESTBATCH:
 				if requestBatch := msg.GetRequestBatch(); requestBatch != nil {
 					if !lbft.isValid(requestBatch, false) {
-						log.Errorf("Replica %s received requestBatch message for consensus %s : ignore illegal requestBatch (%s == %s) ", lbft.options.ID, requestBatch.key(), requestBatch.toChain(), lbft.options.Chain)
+						//log.Errorf("Replica %s received requestBatch message for consensus %s : ignore illegal requestBatch (%s == %s) ", lbft.options.ID, requestBatch.key(), requestBatch.toChain(), lbft.options.Chain)
 					} else if lbft.isPrimary() {
 						if lbft.concurrentCntTo > lbft.options.MaxConcurrentNumTo {
-							log.Warnf("Replica %s received requestBatch message for consensus %s :  max concurrent %d ", lbft.options.ID, requestBatch.key(), lbft.options.MaxConcurrentNumTo)
+							//log.Warnf("Replica %s received requestBatch message for consensus %s :  max concurrent %d ", lbft.options.ID, requestBatch.key(), lbft.options.MaxConcurrentNumTo)
 						} else {
 							lbft.concurrentCntTo++
 							lbft.handleRequestBatch(requestBatch)
@@ -528,44 +528,44 @@ func (lbft *Lbft) handleConsensusMsg() {
 				}
 			case MESSAGEPREPREPARE:
 				if preprepare := msg.GetPrePrepare(); preprepare != nil {
-					log.Debugf("Replica %s core consenter %s received preprepare message from %s --- lbft", lbft.options.ID, preprepare.Name, preprepare.ReplicaID)
+					//log.Debugf("Replica %s core consenter %s received preprepare message from %s --- lbft", lbft.options.ID, preprepare.Name, preprepare.ReplicaID)
 					if !lbft.hasPrimary() {
-						log.Errorf("Replica %s received prePrepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.PrimaryID, lbft.primaryID)
+						//log.Errorf("Replica %s received prePrepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.PrimaryID, lbft.primaryID)
 					} else if preprepare.Chain != lbft.options.Chain || preprepare.ReplicaID != preprepare.PrimaryID {
-						log.Errorf("Replica %s received prePrepare message from %s for consensus %s : ignore illegal preprepare (%s==%s) ", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.Chain, lbft.options.Chain)
+						//log.Errorf("Replica %s received prePrepare message from %s for consensus %s : ignore illegal preprepare (%s==%s) ", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.Chain, lbft.options.Chain)
 					} else if preprepare.ReplicaID != lbft.primaryID {
-						log.Errorf("Replica %s received prePrepare message from %s for consensus %s :  ignore not from primayID (%s==%s)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.ReplicaID, lbft.primaryID)
+						//log.Errorf("Replica %s received prePrepare message from %s for consensus %s :  ignore not from primayID (%s==%s)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.ReplicaID, lbft.primaryID)
 					} else if preprepare.SeqNo <= lbft.lastSeqNum() {
-						log.Debugf("Replica %s received prePrepare message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.SeqNo, lbft.lastSeqNum())
+						//log.Debugf("Replica %s received prePrepare message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, preprepare.ReplicaID, preprepare.Name, preprepare.SeqNo, lbft.lastSeqNum())
 					} else {
 						lbft.handleLbftCoreMsg(preprepare.Name, msg)
 					}
 				}
 			case MESSAGEPREPARE:
 				if prepare := msg.GetPrepare(); prepare != nil {
-					log.Debugf("Replica %s core consenter %s received prepare message from %s --- lbft", lbft.options.ID, prepare.Name, prepare.ReplicaID)
+					//log.Debugf("Replica %s core consenter %s received prepare message from %s --- lbft", lbft.options.ID, prepare.Name, prepare.ReplicaID)
 					if !lbft.hasPrimary() {
-						log.Errorf("Replica %s received prepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.PrimaryID, lbft.primaryID)
+						//log.Errorf("Replica %s received prepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.PrimaryID, lbft.primaryID)
 					} else if prepare.Chain == lbft.options.Chain && prepare.PrimaryID != lbft.primaryID {
-						log.Errorf("Replica %s received prepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.PrimaryID, lbft.primaryID)
+						//log.Errorf("Replica %s received prepare message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.PrimaryID, lbft.primaryID)
 					} else if prepare.Chain == lbft.options.Chain && prepare.SeqNo <= lbft.lastSeqNum() {
-						log.Debugf("Replica %s received prepare message from %s for consensus %s : ingore delay sepNo (%d > %d)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.SeqNo, lbft.lastSeqNum())
+						//log.Debugf("Replica %s received prepare message from %s for consensus %s : ingore delay sepNo (%d > %d)", lbft.options.ID, prepare.ReplicaID, prepare.Name, prepare.SeqNo, lbft.lastSeqNum())
 					} else {
 						lbft.handleLbftCoreMsg(prepare.Name, msg)
 					}
 				}
 			case MESSAGECOMMIT:
 				if commit := msg.GetCommit(); commit != nil {
-					log.Debugf("Replica %s core consenter %s received commit message from %s --- lbft", lbft.options.ID, commit.Name, commit.ReplicaID)
+					//log.Debugf("Replica %s core consenter %s received commit message from %s --- lbft", lbft.options.ID, commit.Name, commit.ReplicaID)
 					// if !lbft.hasPrimary() {
 					// 	log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
 					// } else if commit.Chain == lbft.options.Chain && commit.PrimaryID != lbft.primaryID {
 					// 	log.Errorf("Replica %s received commit message from %s for consensus %s : ignore diff primayID (%s==%s)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.PrimaryID, lbft.primaryID)
 					// } else
 					if commit.Chain != lbft.options.Chain {
-						log.Errorf("Replica %s received committed message from %s for consensus %s : ignore diff chain (%s==%s) ", lbft.options.ID, commit.ReplicaID, commit.Name, commit.Chain, lbft.options.Chain)
+						//log.Errorf("Replica %s received committed message from %s for consensus %s : ignore diff chain (%s==%s) ", lbft.options.ID, commit.ReplicaID, commit.Name, commit.Chain, lbft.options.Chain)
 					} else if commit.SeqNo <= lbft.lastSeqNum() {
-						log.Debugf("Replica %s received commit message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.SeqNo, lbft.lastSeqNum())
+						//log.Debugf("Replica %s received commit message from %s for consensus %s : ignore delay seqNo (%d > %d)", lbft.options.ID, commit.ReplicaID, commit.Name, commit.SeqNo, lbft.lastSeqNum())
 					} else {
 						lbft.handleLbftCoreMsg(commit.Name, msg)
 					}
@@ -735,7 +735,7 @@ func (lbft *Lbft) recvViewChange(vc *ViewChange) {
 			// 	log.Debugf("Replica %s alreay commmit for consensus %s, view change", lbft.options.ID, instance.name)
 			//}
 		})
-		log.Infof("Replica %s start to vote new PrimaryID, view change", lbft.options.ID)
+		//log.Infof("Replica %s start to vote new PrimaryID, view change", lbft.options.ID)
 		lbft.viewChangeTimer.Stop()
 		//lbft.resetViewChangePeriodTimer()
 		lbft.nullRequestTimerStart()
