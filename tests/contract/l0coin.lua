@@ -2,11 +2,11 @@
 local L0 = require("L0")
 
 -- 合约创建时会被调用一次，之后就不会被调用
-function L0Init(func, args)
+function L0Init(args)
     print("in L0Init")
     L0.PutState("minter", L0.Account().Address)
     L0.PutState("balances", {})
-    return true, "ok"
+    return true
 end
 
 -- 每次合约执行都调用
@@ -23,13 +23,13 @@ function L0Invoke(func, args)
         transfer(receiver, amount)
     end
 
-    return true, "ok"
+    return true
 end
 
 -- 查询
-function L0Query(func,args)
-    print("in L0Query",func,args)
-    return true, "L0query ok"
+function L0Query(args)
+    print("in L0Query")
+    return "L0query ok"
 end
 
 function mint(receiver, amount)

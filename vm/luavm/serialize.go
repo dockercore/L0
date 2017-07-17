@@ -18,7 +18,7 @@
 
 // serialize LValue to []byte and deserializ []byte to LValue
 
-package vm
+package luavm
 
 import (
 	"bytes"

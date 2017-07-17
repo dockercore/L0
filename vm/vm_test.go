@@ -26,38 +26,53 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bocheninc/L0/components/log"
-	"github.com/bocheninc/L0/core/types"
-	"math/big"
-	"github.com/yuin/gopher-lua"
-	"github.com/bocheninc/L0/core/accounts"
 	"encoding/hex"
+	"math/big"
+
+	"github.com/bocheninc/L0/core/accounts"
+	"github.com/bocheninc/L0/core/types"
 )
 
-func TestRealExecute(t *testing.T) {
-	tx := types.NewTransaction(nil, nil, 0, 0, accounts.Address{}, accounts.NewAddress([]byte("999999999999999999")), nil, nil, 0)
+func TestEncode(t *testing.T) {
+	d := new(InvokeData)
+	d.FuncName = "fn"
+	d.SessionID = 123
+	d.SetParams("contract script code size illegal, max size is:5120 byte", false)
+
+	fmt.Println("len:", len(d.Params))
+
+	var str string
+	var rst bool
+	d.DecodeParams(&str, &rst)
+	fmt.Println("str:", str, " rst:", rst)
+}
+
+func TestExecute(t *testing.T) {
+	tx := types.NewTransaction(nil, nil, types.TypeContractInvoke, 0, accounts.Address{}, accounts.NewAddress([]byte("999999999999999999")), nil, nil, 0)
 
 	cs := &types.ContractSpec{
-		ContractAddr: []byte("11111111111111111111"),
-		ContractParams:[]string{"transfer", hex.EncodeToString([]byte("12345678900987654321")), "100"}}
+		ContractCode:   getCode(),
+		ContractAddr:   []byte("11111111111111111111"),
+		ContractParams: []string{"transfer", hex.EncodeToString([]byte("12345678900987654321")), "99"}}
 
 	hd := &L0Handler{}
 
-	//正式执行
-	ctx := NewCTX(tx, cs, hd)
-
+	success, err := PreExecute(tx, cs, hd)
+	if err != nil {
+		fmt.Println("percall error", err)
+	}
+	fmt.Println("success:", success)
 
 	begin := time.Now().UnixNano() / 1000000
-	for i := 0; i < 1; i++ {
-		ok, err := RealExecute(ctx)
-		if err != nil {
-			log.Error(err)
-		}
-
-		fmt.Println(ok, " ##### ", err)
-	}
+	// for i := 0; i < 1; i++ {
+	// 	_, err := PreExecute(tx, cs, hd)
+	// 	if err != nil {
+	// 		fmt.Println("percall error", err)
+	// 		break
+	// 	}
+	// }
 	end := time.Now().UnixNano() / 1000000
-	fmt.Println("run time:", end-begin)
+	fmt.Println("time：", end-begin)
 }
 
 type L0Handler struct {
@@ -65,18 +80,10 @@ type L0Handler struct {
 
 func (hd *L0Handler) GetState(key string) ([]byte, error) {
 	if "balances" == key {
-		ltb := new(lua.LTable)
-		ltb.RawSetString("sender", lua.LNumber(100))
-		ltb.RawSetString("receiver", lua.LNumber(200))
-		ltb.RawSetString("c", lua.LNumber(300))
-
-		return lvalueToByte(ltb), nil
-	} else if ContractCodeKey == key {
-		f, _ := os.Open("../tests/contract/l0coin.lua")
-		defer f.Close()
-		buf, _ := ioutil.ReadAll(f)
-
+		buf := []byte{4, 3, 1, 1, 99, 3, 0, 0, 0, 0, 0, 192, 114, 64, 1, 8, 114, 101, 99, 101, 105, 118, 101, 114, 3, 0, 0, 0, 0, 0, 0, 105, 64, 1, 6, 115, 101, 110, 100, 101, 114, 3, 0, 0, 0, 0, 0, 0, 89, 64}
 		return buf, nil
+	} else if contractCodeKey == key {
+		return getCode(), nil
 	}
 
 	return nil, nil
@@ -109,4 +116,12 @@ func (hd *L0Handler) SmartContractFailed() {
 
 func (hd *L0Handler) SmartContractCommitted() {
 
+}
+
+func getCode() []byte {
+	f, _ := os.Open("../tests/contract/l0coin.js")
+	defer f.Close()
+	buf, _ := ioutil.ReadAll(f)
+
+	return buf
 }

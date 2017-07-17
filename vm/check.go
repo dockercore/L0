@@ -24,48 +24,49 @@ package vm
 import (
 	"encoding/hex"
 	"errors"
+
 	"strconv"
 
 	"github.com/bocheninc/L0/core/accounts"
 )
 
-func checkStateKey(key string) error {
-	if ContractCodeKey == key {
+func CheckStateKey(key string) error {
+	if contractCodeKey == key {
 		return errors.New("state key illegal:" + key)
 	}
 
-	if len(key) > vmconf.ExecLimitMaxStateKeyLength {
-		return errors.New("state key too long max length is:" + string(vmconf.ExecLimitMaxStateKeyLength))
+	if len(key) > VMConf.ExecLimitMaxStateKeyLength {
+		return errors.New("state key too long max length is:" + strconv.Itoa(VMConf.ExecLimitMaxStateKeyLength))
 	}
 
 	return nil
 }
 
-func checkStateValue(value []byte) error {
+func CheckStateValue(value []byte) error {
 	if value == nil {
 		return nil
 	}
 
-	if len(value) > vmconf.ExecLimitMaxStateValueSize {
-		return errors.New("state value too long max size is:" + string(vmconf.ExecLimitMaxStateValueSize))
+	if len(value) > VMConf.ExecLimitMaxStateValueSize {
+		return errors.New("state value too long max size is:" + strconv.Itoa(VMConf.ExecLimitMaxStateValueSize))
 	}
 
 	return nil
 }
 
-func checkStateKeyValue(key string, value []byte) error {
-	if err := checkStateKey(key); err != nil {
+func CheckStateKeyValue(key string, value []byte) error {
+	if err := CheckStateKey(key); err != nil {
 		return err
 	}
 
-	if err := checkStateValue(value); err != nil {
+	if err := CheckStateValue(value); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func checkAddr(addr string) error {
+func CheckAddr(addr string) error {
 	addrByte, err := hex.DecodeString(addr)
 	if err != nil {
 		return errors.New("account address illegal")
@@ -78,9 +79,12 @@ func checkAddr(addr string) error {
 	return nil
 }
 
-func checkContractCode(code string) error {
-	if len(code) == 0 || len(code) > vmconf.ExecLimitMaxScriptSize {
-		return errors.New("contract script code size illegal : " + strconv.Itoa(len(code)) + ", max size is:" + strconv.Itoa(vmconf.ExecLimitMaxScriptSize) + " byte")
+func CheckContractCode(code string) error {
+	if len(code) == 0 || len(code) > VMConf.ExecLimitMaxScriptSize {
+		return errors.New("contract script code size " +
+			strconv.Itoa(len(code)) +
+			"byte illegal, max size is:" +
+			strconv.Itoa(VMConf.ExecLimitMaxScriptSize) + " byte")
 	}
 
 	return nil

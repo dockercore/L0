@@ -55,6 +55,12 @@ func recursiveEncode(w io.Writer, s reflect.Value) {
 	case reflect.String:
 		WriteVarInt(w, uint64(len(s.String())))
 		w.Write([]byte(s.String()))
+	case reflect.Bool:
+		if s.Bool() {
+			w.Write([]byte{1})
+		} else {
+			w.Write([]byte{0})
+		}
 	default:
 		break
 	}
@@ -137,11 +143,11 @@ func recursiveDecode(r io.Reader, s reflect.Value) error {
 		for i := 0; i < s.NumField(); i++ {
 			recursiveDecode(r, s.Field(i))
 		}
-	case reflect.Uint8, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		if l, err = ReadVarInt(r); l > 0 {
 			s.SetUint(l)
 		}
-	case reflect.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if l, err = ReadVarInt(r); l > 0 {
 			s.SetInt((int64)(l))
 		}
@@ -167,8 +173,13 @@ func recursiveDecode(r io.Reader, s reflect.Value) error {
 			io.ReadFull(r, buf)
 			s.SetString(string(buf))
 		}
+	case reflect.Bool:
+		b := make([]byte, 1)
+		if _, err = r.Read(b); b[0] == 1 {
+			s.SetBool(true)
+		}
 	default:
-		//fmt.Println("defualt", s)
+		// fmt.Println("defualt", s)
 	}
 	return err
 }
@@ -230,7 +241,9 @@ func ptrDecode(r io.Reader, s reflect.Value) error {
 		if s.Kind() == reflect.Ptr {
 			if !s.IsNil() || !s.IsValid() {
 				err = recursiveDecode(r, s.Elem())
+				break
 			}
+
 			val := reflect.New(s.Type().Elem())
 			if err = recursiveDecode(r, val.Elem()); err == nil && s.CanSet() {
 				s.Set(val)

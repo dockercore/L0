@@ -29,15 +29,19 @@ var (
 	toChain        = []byte{0}
 	issuePriKeyHex = "496c663b994c3f6a8e99373c3308ee43031d7ea5120baf044168c95c45fbcf83"
 	sender         = "7ce1bb0858e71b50d603ebe4bec95b11d8833e6d"
-	contractPath   = "/home/itcast/go/src/github.com/bocheninc/L0/tests/contract/l0coin.lua"
+	contractPath   = "/home/itcast/go/src/github.com/bocheninc/L0/tests/contract/l0vote.lua"
+
+	//contractPath = "/home/itcast/go/src/github.com/bocheninc/L0/tests/contract/l0coin.js"
+	//contractPath = "/home/itcast/go/src/github.com/bocheninc/L0/tests/contract/l0coin.lua"
 )
 
 func main() {
 	issueTX()
-	time.Sleep(40 * time.Second)
+	time.Sleep(1 * time.Second)
 	DeploySmartContractTX()
-	time.Sleep(40 * time.Second)
-	ExecSmartContractTX()
+	time.Sleep(1 * time.Second)
+	//ExecSmartContractTX([]string{"transfer", "8ce1bb0858e71b50d603ebe4bec95b11d8833e68", "100"})
+	ExecSmartContractTX([]string{"vote", "张三", "秦皇岛"})
 	time.Sleep(40 * time.Second)
 
 }
@@ -116,9 +120,7 @@ func DeploySmartContractTX() {
 
 	contractSpec.ContractCode = buf
 	contractSpec.ContractAddr = a.Bytes()
-	contractSpec.ContractParams = []string{"init", "100"}
-	privateKey, _ := crypto.GenerateKey()
-	accounts.PublicKeyToAddress(*privateKey.Public())
+	contractSpec.ContractParams = []string{}
 
 	tx := types.NewTransaction(
 		coordinate.NewChainCoordinate(fromChain),
@@ -137,7 +139,7 @@ func DeploySmartContractTX() {
 	txChan <- tx
 }
 
-func ExecSmartContractTX() {
+func ExecSmartContractTX(params []string) {
 	issueKey, _ := crypto.HexToECDSA(issuePriKeyHex)
 	nonce := 3
 	txChan := make(chan *types.Transaction, 5)
@@ -153,7 +155,8 @@ func ExecSmartContractTX() {
 
 	contractSpec.ContractCode = []byte("")
 	contractSpec.ContractAddr = a.Bytes()
-	contractSpec.ContractParams = []string{"transfer", "8ce1bb0858e71b50d603ebe4bec95b11d8833e68", "100"}
+	//contractSpec.ContractParams =
+	contractSpec.ContractParams = params
 	privateKey, _ := crypto.GenerateKey()
 	accounts.PublicKeyToAddress(*privateKey.Public())
 	tx := types.NewTransaction(

@@ -21,143 +21,210 @@
 package vm
 
 import (
+	"sync"
+
+	"math/big"
+
 	"errors"
 
+	"fmt"
+
 	"github.com/bocheninc/L0/components/log"
+	"github.com/bocheninc/L0/core/accounts"
+	"github.com/bocheninc/L0/core/ledger/contract"
 	"github.com/bocheninc/L0/core/types"
-	"github.com/yuin/gopher-lua"
 )
 
-func init() {
-	vmconf = DefaultConfig()
-}
+const (
+	contractCodeKey = "__CONTRACT_CODE_KEY__"
+)
+
+var (
+	luavmProc *VMProc
+	jsvmProc  *VMProc
+	locker    sync.Mutex
+
+	zeroAddr = accounts.Address{}
+)
 
 // PreExecute execute contract but not commit change(balances and state)
-func PreExecute(ctx *CTX) ([]byte, error) {
-	return execContract(ctx)
+func PreExecute(tx *types.Transaction, cs *types.ContractSpec, handler contract.ISmartConstract) (bool, error) {
+	ret, err := execute(tx, cs, handler, false)
+	if err != nil {
+		return false, err
+	}
+	return ret.(bool), err
 }
 
 // RealExecute execute contract and commit change(balances and state)
-func RealExecute(ctx *CTX) ([]byte, error) {
-	data, err := execContract(ctx)
+func RealExecute(tx *types.Transaction, cs *types.ContractSpec, handler contract.ISmartConstract) (bool, error) {
+	ret, err := execute(tx, cs, handler, true)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
-	//commit all change
-	if ctx.Transaction.GetType() != types.TypeContractQuery {
-		ctx.commit()
-	}
-
-	return data, nil
+	return ret.(bool), err
 }
 
-// execContract start a lua vm and execute smart contract script
-func execContract(ctx *CTX) ([]byte, error) {
-	defer func() {
-		if e := recover(); e != nil {
-			log.Error("exec contract code error ", e)
-		}
-	}()
-
-	payload := ctx.payload()
-	if err := checkContractCode(payload); err != nil {
-		return nil, err
-	}
-
-	L := newState()
-	defer L.Close()
-
-	L.PreloadModule("L0", genModelLoader(ctx))
-	err := L.DoString(payload)
+func Query(tx *types.Transaction, cs *types.ContractSpec, handler contract.ISmartConstract) ([]byte, error) {
+	ret, err := execute(tx, cs, handler, true)
 	if err != nil {
 		return nil, err
 	}
 
-	switch ctx.Transaction.GetType() {
+	return ret.([]byte), err
+}
+
+func execute(tx *types.Transaction, cs *types.ContractSpec, handler contract.ISmartConstract, realExec bool) (interface{}, error) {
+	var vm *VMProc
+
+	if err := initVMProc(); err != nil {
+		return false, err
+	}
+
+	// TODO 根据不同的语言调用不同的vm
+	switch VMConf.VMType {
+	case "luavm":
+		vm = luavmProc
+	case "jsvm":
+		vm = jsvmProc
+	default:
+		return nil, fmt.Errorf("not support vm %s", VMConf.VMType)
+	}
+
+	contractCode := getContractCode(cs, handler)
+	cd := NewContractData(tx, cs, contractCode)
+
+	switch tx.GetType() {
 	case types.TypeContractInit:
-		params := ctx.ContractSpec.ContractParams
-		return callLuaFunc(L, "L0Init", params...)
-	case types.TypeContractInvoke:
-		params := ctx.ContractSpec.ContractParams
-		return callLuaFunc(L, "L0Invoke", params...)
-	case types.TypeContractQuery:
-		params := ctx.ContractSpec.ContractParams
-		return callLuaFunc(L, "L0Query", params...)
-	}
-
-	return nil, nil
-}
-
-func genModelLoader(ctx *CTX) lua.LGFunction {
-	expt := exporter(ctx)
-
-	return func(L *lua.LState) int {
-		mod := L.SetFuncs(L.NewTable(), expt) // register functions to the table
-		L.Push(mod)
-		return 1
-	}
-}
-
-// newState create a lua vm
-func newState() *lua.LState {
-	opt := lua.Options{
-		SkipOpenLibs:        true,
-		CallStackSize:       vmconf.VMCallStackSize,
-		RegistrySize:        vmconf.VMRegistrySize,
-		MaxAllowOpCodeCount: vmconf.ExecLimitMaxOpcodeCount,
-	}
-	L := lua.NewState(opt)
-
-	// forbid: lua.IoLibName, lua.OsLibName, lua.DebugLibName, lua.ChannelLibName, lua.CoroutineLibName
-	openLib(L, lua.LoadLibName, lua.OpenPackage)
-	openLib(L, lua.BaseLibName, lua.OpenBase)
-	openLib(L, lua.TabLibName, lua.OpenTable)
-	openLib(L, lua.StringLibName, lua.OpenString)
-	openLib(L, lua.MathLibName, lua.OpenMath)
-
-	return L
-}
-
-// openLib loads the built-in libraries. It is equivalent to running OpenLoad,
-// then OpenBase, then iterating over the other OpenXXX functions in any order.
-func openLib(L *lua.LState, libName string, libFunc lua.LGFunction) {
-	L.Push(L.NewFunction(libFunc))
-	L.Push(lua.LString(libName))
-	L.Call(1, 0)
-}
-
-// call lua function(L0Init, L0Invoke, L0Query)
-func callLuaFunc(L *lua.LState, funcName string, params ...string) ([]byte, error) {
-	p := lua.P{
-		Fn:      L.GetGlobal(funcName),
-		NRet:    2,
-		Protect: true,
-	}
-
-	var err error
-	l := len(params)
-	if l == 0 {
-		err = L.CallByParam(p, lua.LNil, lua.LNil)
-	} else if l == 1 {
-		err = L.CallByParam(p, lua.LString(params[0]), lua.LNil)
-	} else {
-		tb := new(lua.LTable)
-		for i := 1; i < l; i++ {
-			tb.RawSet(lua.LNumber(i), lua.LString(params[i]))
+		if realExec {
+			handler.AddState(contractCodeKey, cs.ContractCode) // add contract code into state
+			return vm.PCallRealInitContract(cd, handler)
 		}
-		err = L.CallByParam(p, lua.LString(params[0]), tb)
-	}
-	if err != nil {
-		return nil, err
+		return vm.PCallPreInitContract(cd, handler)
+	case types.TypeContractInvoke:
+		if realExec {
+			return vm.PCallRealExecute(cd, handler)
+		}
+		return vm.PCallPreExecute(cd, handler)
+	case types.TypeContractQuery:
+		return vm.PCallQueryContract(cd, handler)
 	}
 
-	if lua.LVIsFalse(L.Get(-2)) {
-		return nil, errors.New(L.ToString(-1))
+	return false, errors.New("Transaction type error")
+}
+
+func initVMProc() error {
+	var err error
+	switch VMConf.VMType {
+	case "jsvm":
+		if jsvmProc == nil {
+			locker.Lock()
+			if jsvmProc == nil {
+				if jsvmProc, err = NewVMProc(VMConf.JSVMExeFilePath); err == nil {
+					jsvmProc.SetRequestHandle(requestHandle)
+					jsvmProc.Selector()
+				} else {
+					log.Error("create jsvm proc error", err)
+				}
+			}
+			locker.Unlock()
+		}
+	case "luavm":
+		// create lua vm
+		if luavmProc == nil {
+			locker.Lock()
+			if luavmProc == nil {
+				if luavmProc, err = NewVMProc(VMConf.LuaVMExeFilePath); err == nil {
+					luavmProc.SetRequestHandle(requestHandle)
+					luavmProc.Selector()
+				} else {
+					log.Error("create luavm proc error", err)
+				}
+			}
+			locker.Unlock()
+		}
+	default:
+		return fmt.Errorf("not support vm %s", VMConf.VMType)
 	}
 
-	return []byte(L.ToString(-1)), nil
+	return err
+}
 
-	// ret := L.CheckBool(-1) // returned value
-	//L.Pop(1) // remove received value
+func getContractCode(cs *types.ContractSpec, handler contract.ISmartConstract) string {
+	code := cs.ContractCode
+	if code != nil && len(code) > 0 {
+		return string(code)
+	}
+
+	code, err := handler.GetState(contractCodeKey)
+	if code != nil && err == nil {
+		return string(code)
+	}
+
+	return ""
+}
+
+func requestHandle(vmproc *VMProc, req *InvokeData) (interface{}, error) {
+	// log.Debugf("request parent proc funcName:%s\n", req.FuncName)
+	switch req.FuncName {
+	case "GetState":
+		var key string
+		if err := req.DecodeParams(&key); err != nil {
+			return nil, err
+		}
+		return vmproc.L0Handler.GetState(key)
+
+	case "PutState":
+		var key string
+		var value []byte
+		if err := req.DecodeParams(&key, &value); err != nil {
+			return nil, err
+		}
+		vmproc.L0Handler.AddState(key, value)
+		return true, nil
+
+	case "DelState":
+		var key string
+		if err := req.DecodeParams(&key); err != nil {
+			return nil, err
+		}
+		vmproc.L0Handler.DelState(key)
+		return true, nil
+
+	case "GetBalances":
+		var addr string
+		if err := req.DecodeParams(&addr); err != nil {
+			return nil, err
+		}
+		b, err := vmproc.L0Handler.GetBalances(addr)
+		return b.Int64(), err
+
+	case "CurrentBlockHeight":
+		height := vmproc.L0Handler.CurrentBlockHeight()
+		return height, nil
+
+	case "AddTransfer":
+		var (
+			fromAddr, toAddr string
+			amount           int64
+			txType           uint32
+		)
+		if err := req.DecodeParams(&fromAddr, &toAddr, &amount, &txType); err != nil {
+			return nil, err
+		}
+		vmproc.L0Handler.AddTransfer(fromAddr, toAddr, big.NewInt(amount), txType)
+		return true, nil
+
+	case "SmartContractFailed":
+		vmproc.L0Handler.SmartContractFailed()
+		return true, nil
+
+	case "SmartContractCommitted":
+		vmproc.L0Handler.SmartContractCommitted()
+		return true, nil
+
+	}
+
+	return false, errors.New("no method match:" + req.FuncName)
 }

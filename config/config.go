@@ -28,11 +28,13 @@ import (
 	"github.com/bocheninc/L0/core/merge"
 	"github.com/bocheninc/L0/core/p2p"
 	"github.com/bocheninc/L0/core/params"
+	"github.com/bocheninc/L0/vm"
 	"github.com/spf13/viper"
 )
 
 const (
 	defaultConfigFilename   = "lcnd.yaml"
+	defaultVMLogFilename    = "vm.log"
 	defaultLogFilename      = "lcnd.log"
 	defaultChainDataDirname = "chaindata"
 	defaultLogDirname       = "logs"
@@ -70,8 +72,7 @@ type Config struct {
 	// net
 	NetConfig *p2p.Config
 
-	//txMerger
-
+	// Merger
 	MergeConfig *merge.Config
 
 	// log
@@ -143,6 +144,7 @@ func loadConfig(cfgFile string) (conf *Config, err error) {
 	cfg.NetConfig = NetConfig(cfg.NodeDir)
 	cfg.MergeConfig = MergeConfig(cfg.NodeDir)
 	cfg.readLogConfig()
+	vm.VMConf = VMConfig(cfg.LogFile, cfg.LogLevel)
 
 	return cfg, nil
 }

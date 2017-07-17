@@ -102,6 +102,11 @@ func (t *Transaction) Broadcast(txHex string, reply *crypto.Hash) error {
 
 //Query contract query
 func (t *Transaction) Query(args *ContractQueryArgs, reply *string) error {
+
+	if len(args.ContractAddr) == 0 {
+		return errors.New("contract address is illegal")
+	}
+
 	if args.ContractAddr[0:2] == "0x" {
 		args.ContractAddr = args.ContractAddr[2:]
 	}

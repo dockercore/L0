@@ -1,18 +1,18 @@
 // Copyright (C) 2017, Beijing Bochen Technology Co.,Ltd.  All rights reserved.
 //
 // This file is part of L0
-// 
+//
 // The L0 is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // The L0 is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// 
+//
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -24,7 +24,6 @@ import (
 	"math/big"
 
 	"github.com/bocheninc/L0/components/db"
-	"github.com/bocheninc/L0/components/log"
 	"github.com/bocheninc/L0/core/accounts"
 	"github.com/bocheninc/L0/core/types"
 )
@@ -100,7 +99,6 @@ func (state *State) GetBalance(a accounts.Address) (*big.Int, uint32, error) {
 	}
 	balance := new(Balance)
 	balance.deserialize(balanceBytes)
-	log.Info("balanceBytes: ", balanceBytes, "Amount: ", balance.Amount)
 	return balance.Amount, balance.Nonce, nil
 }
 
@@ -157,6 +155,7 @@ func (state *State) Transfer(sender, recipient accounts.Address, fee *big.Int, b
 	return writeBatchs, nil
 }
 
+//GetTmpBalance get tmpBalance When the block is not packaged
 func (state *State) GetTmpBalance(addr accounts.Address) (*Balance, error) {
 	balance, ok := state.tmpBalance[addr.String()]
 	if !ok {

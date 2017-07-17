@@ -48,3 +48,37 @@ consensus:
     maxConcurrentNumFrom: 10
     maxConcurrentNumTo: 10
 
+# vm
+vm:
+  type: "luavm"
+  #type: "jsvm"
+
+  # vm maximum memory size (MB)
+  maxMem: 800
+  registrySize: 256
+  callStackSize: 64
+  execLimitStackDepth: 100
+
+  # maximum allow execute opcode count
+  execLimitMaxOpcodeCount: 10000
+
+  # the contract maximum run time (millisecond)
+  execLimitMaxRunTime: 1000
+
+  # contract script(lua source code) maximum size (byte)
+  execLimitMaxScriptSize: 5120
+
+  # the max state value size (byte)
+  execLimitMaxStateValueSize: 5120
+
+  # the max state count in one contract
+  execLimitMaxStateItemCount: 1000
+
+  # max state key length
+  execLimitMaxStateKeyLength: 256
+
+  luaVMExeFilePath: "bin/luavm"
+  jsVMExeFilePath: "bin/jsvm"
+
+
+

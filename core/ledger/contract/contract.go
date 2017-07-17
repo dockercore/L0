@@ -61,7 +61,7 @@ type SmartConstract struct {
 	smartContractTxs types.Transactions
 }
 
-// NewState returns a new State
+// NewSmartConstract returns a new State
 func NewSmartConstract(db *db.BlockchainDB, ledgerHandler ILedgerSmartContract) *SmartConstract {
 	return &SmartConstract{
 		dbHandler:     db,
@@ -85,7 +85,7 @@ func (sctx *SmartConstract) StartConstract(blockHeight uint32) {
 func (sctx *SmartConstract) StopContract(blockHeight uint32) {
 	log.Debugf("stopConstract() for blockHeight [%d]", blockHeight)
 	if sctx.height != blockHeight {
-		log.Errorf("Different blockHeight in contract-begin [%s] and contract-finish [%s]", sctx.height, blockHeight)
+		log.Errorf("Different blockHeight in contract-begin [%d] and contract-finish [%d]", sctx.height, blockHeight)
 	}
 
 	sctx.height = 0
@@ -121,7 +121,7 @@ func (sctx *SmartConstract) GetState(key string) ([]byte, error) {
 
 // AddState put key-value into cache
 func (sctx *SmartConstract) AddState(key string, value []byte) {
-	log.Debugf("PutState smartcontract=[%s], key=[%s], value=[%#v]", sctx.scAddr, key, value)
+	log.Debugf("PutState smartcontract=[%x], key=[%s], value=[%#v]", sctx.scAddr, key, value)
 	if !sctx.InProgress() {
 		log.Errorf("State can be changed only in context of a block.")
 	}
@@ -181,7 +181,7 @@ func (sctx *SmartConstract) InProgress() bool {
 // FinishContractTransaction finish contract transaction
 func (sctx *SmartConstract) FinishContractTransaction() (types.Transactions, error) {
 	if !sctx.committed {
-		return nil, errors.New("Execute VM Fail ....")
+		return nil, errors.New("Execute VM Fail")
 	}
 
 	return sctx.smartContractTxs, nil

@@ -269,6 +269,48 @@
 			"revisionTime": "2017-03-02T17:43:01Z"
 		},
 		{
+			"checksumSHA1": "vVgpBvsjdZyfgb2MOeFniTpt/kM=",
+			"path": "github.com/robertkrimen/otto",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
+			"checksumSHA1": "35jaG3ZuHI84WLgAfjkM/nor+dU=",
+			"path": "github.com/robertkrimen/otto/ast",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
+			"checksumSHA1": "L0KsB2EzTlPgv0iae3q3SukNW7U=",
+			"path": "github.com/robertkrimen/otto/dbg",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
+			"checksumSHA1": "euDLJKhw4doeTSxjEoezjxYXLzs=",
+			"path": "github.com/robertkrimen/otto/file",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
+			"checksumSHA1": "THLL/H15S/hPSfii9hiJBU57FR8=",
+			"path": "github.com/robertkrimen/otto/parser",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
+			"checksumSHA1": "7J/7NaYRqKhBvZ+dTIutsEoEgFw=",
+			"path": "github.com/robertkrimen/otto/registry",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
+			"checksumSHA1": "/jMXYuXycBpTqWhRyJ2xsqvHvQI=",
+			"path": "github.com/robertkrimen/otto/token",
+			"revision": "49fee9c1c0db1c366003ede4cc665f9924a97521",
+			"revisionTime": "2017-06-04T10:36:02Z"
+		},
+		{
 			"checksumSHA1": "ncB97TqhsqLzFWWZCXRO3i1NoXk=",
 			"path": "github.com/spaolacci/murmur3",
 			"revision": "0d12bf811670bf6a1a63828dfbd003eded177fce",
@@ -417,6 +459,18 @@
 			"path": "golang.org/x/text/unicode/norm",
 			"revision": "f28f36722d5ef2f9655ad3de1f248e3e52ad5ebd",
 			"revisionTime": "2017-02-28T17:26:26Z"
+		},
+		{
+			"checksumSHA1": "O6ckGSF8hTUpP1+/GSw6RvzcY2M=",
+			"path": "gopkg.in/sourcemap.v1",
+			"revision": "6e83acea0053641eff084973fee085f0c193c61a",
+			"revisionTime": "2017-02-13T14:20:43Z"
+		},
+		{
+			"checksumSHA1": "FGuroI+Vvi5/VXE+Y+7G0lzb2EM=",
+			"path": "gopkg.in/sourcemap.v1/base64vlq",
+			"revision": "6e83acea0053641eff084973fee085f0c193c61a",
+			"revisionTime": "2017-02-13T14:20:43Z"
 		},
 		{
 			"checksumSHA1": "/0kOHaD3bhhN1GjmZajSigSqu4E=",

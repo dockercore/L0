@@ -254,8 +254,8 @@ func (ledger *Ledger) QueryContract(tx *types.Transaction) ([]byte, error) {
 	contractSpec := new(types.ContractSpec)
 	utils.Deserialize(tx.Payload, contractSpec)
 	ledger.contract.ExecTransaction(tx, string(contractSpec.ContractAddr))
-	ctx := vm.NewCTX(tx, contractSpec, ledger.contract)
-	result, err := vm.RealExecute(ctx)
+
+	result, err := vm.Query(tx, contractSpec, ledger.contract)
 	if err != nil {
 		log.Error("contract query execute failed  ", err)
 		return nil, fmt.Errorf("contract query execute failed : %v ", err)
@@ -281,7 +281,6 @@ func (ledger *Ledger) executeTransaction(Txs types.Transactions) ([]*db.WriteBat
 	var (
 		err                                               error
 		tmpAtomicWriteBatchs, tmpWriteBatchs, writeBatchs []*db.WriteBatch
-		effectiveTxs                                      types.Transactions
 	)
 
 	bh, _ := ledger.Height()
@@ -331,17 +330,16 @@ func (ledger *Ledger) executeTransaction(Txs types.Transactions) ([]*db.WriteBat
 			writeBatchs = append(writeBatchs, tmpAtomicWriteBatchs...)
 
 			if len(txs) != 0 {
+
 				contractTxWriteBatchs, contractTxs, err := ledger.executeTransaction(txs)
 				if err != nil {
 					return nil, nil, err
 				}
-
+				log.Debugln("txs-haha", *txs[0], *contractTxs[0])
 				writeBatchs = append(writeBatchs, contractTxWriteBatchs...)
 				Txs = append(Txs, contractTxs...)
 			}
 		}
-
-		effectiveTxs = append(effectiveTxs, tx)
 	}
 
 	writeBatchs, err = ledger.contract.AddChangesForPersistence(writeBatchs)
@@ -351,7 +349,7 @@ func (ledger *Ledger) executeTransaction(Txs types.Transactions) ([]*db.WriteBat
 
 	ledger.contract.StopContract(bh)
 	log.Debugln("tx-len stop", len(Txs), "bh ", bh)
-	return writeBatchs, effectiveTxs, nil
+	return writeBatchs, Txs, nil
 }
 
 func (ledger *Ledger) executeIssueTx(writeBatchs []*db.WriteBatch, tx *types.Transaction) ([]*db.WriteBatch, error) {
@@ -467,10 +465,9 @@ func (ledger *Ledger) executeSmartContractTx(tx *types.Transaction) (types.Trans
 	contractSpec := new(types.ContractSpec)
 	utils.Deserialize(tx.Payload, contractSpec)
 	ledger.contract.ExecTransaction(tx, string(contractSpec.ContractAddr))
-	ctx := vm.NewCTX(tx, contractSpec, ledger.contract)
-	_, err := vm.RealExecute(ctx)
+
+	_, err := vm.RealExecute(tx, contractSpec, ledger.contract)
 	if err != nil {
-		log.Error("contract execute failed : ", err)
 		return nil, fmt.Errorf("contract execute failed : %v ", err)
 	}
 
